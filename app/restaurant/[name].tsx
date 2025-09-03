@@ -1,6 +1,7 @@
 import { NutritionModal } from '@/components/NutritionModal';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
+import { Colors } from '@/constants/Colors';
 import { menuDatabase, MenuItem, Restaurant } from '@/services/MenuDatabase';
 import { useNutritionTracker } from '@/services/NutritionTracker';
 import { Ionicons } from '@expo/vector-icons';
@@ -132,7 +133,7 @@ export default function RestaurantPage() {
           <Ionicons 
             name={isAdding ? "hourglass" : "add"} 
             size={20} 
-            color="#4ECDC4" 
+            color="#FFFFFF" 
           />
         </TouchableOpacity>
       </View>
@@ -235,6 +236,7 @@ export default function RestaurantPage() {
           setModalVisible(false);
           setSelectedMenuItem(null);
         }}
+        restaurantName={restaurant?.name}
       />
     </ThemedView>
   );
@@ -258,14 +260,14 @@ const styles = StyleSheet.create({
   },
   backText: {
     fontSize: 16,
-    color: '#4ECDC4',
+    color: Colors.primary,
   },
   headerContent: {
     alignItems: 'center',
   },
   restaurantTitle: {
     marginBottom: 8,
-    color: '#4ECDC4',
+    color: Colors.primary,
     textAlign: 'center',
   },
   restaurantHours: {
@@ -302,7 +304,7 @@ const styles = StyleSheet.create({
   categoryName: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#F7DC6F',
+    color: Colors.primary,
     marginBottom: 4,
   },
   categoryCount: {
@@ -313,14 +315,14 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(247, 220, 111, 0.2)',
+    backgroundColor: 'rgba(0, 104, 56, 0.2)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   expandIcon: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#F7DC6F',
+    color: Colors.primary,
   },
   categoryContent: {
     borderTopWidth: 1,
@@ -358,14 +360,14 @@ const styles = StyleSheet.create({
   menuItemCalories: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#FF6B6B',
+    color: Colors.primary,
   },
   menuItemServing: {
     fontSize: 12,
     opacity: 0.7,
   },
   halalBadge: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: Colors.primary,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
@@ -377,9 +379,10 @@ const styles = StyleSheet.create({
   },
   menuItemArrow: {
     marginLeft: 8,
+    marginTop: -8,
   },
   arrowText: {
-    fontSize: 16,
+    fontSize: 20,
     opacity: 0.5,
   },
   loadingContainer: {
@@ -393,18 +396,16 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 16,
-    color: '#FF6B6B',
+    color: Colors.primary,
     textAlign: 'center',
   },
   addButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(78, 205, 196, 0.2)',
+    backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#4ECDC4',
   },
   addButtonLoading: {
     opacity: 0.5,

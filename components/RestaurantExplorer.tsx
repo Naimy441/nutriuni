@@ -1,3 +1,4 @@
+import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { RestaurantInfo, useMenuDatabase } from '@/services/MenuDatabase';
 import { EvilIcons } from '@expo/vector-icons';
@@ -99,11 +100,22 @@ export function RestaurantExplorer() {
             placeholderTextColor={colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.6)' : 'rgba(60, 60, 67, 0.6)'}
             value={searchQuery}
             onChangeText={setSearchQuery}
-            clearButtonMode="while-editing"
             returnKeyType="search"
             autoCapitalize="none"
             autoCorrect={false}
           />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity 
+              style={styles.clearButton}
+              onPress={() => setSearchQuery('')}
+            >
+              <EvilIcons 
+                name="close" 
+                size={20} 
+                color={colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.6)' : 'rgba(60, 60, 67, 0.6)'} 
+              />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -150,7 +162,7 @@ const styles = StyleSheet.create({
   restaurantName: {
     fontSize: 18,
     marginBottom: 4,
-    color: '#4ECDC4',
+    color: Colors.primary,
   },
   restaurantHours: {
     fontSize: 14,
@@ -170,13 +182,13 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(76, 205, 196, 0.2)',
+    backgroundColor: 'rgba(0, 104, 56, 0.2)',
     position: 'relative',
   },
   arrowIcon: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#4ECDC4',
+    color: Colors.primary,
     position: 'absolute',
     top: '50%',
     left: '50%',
@@ -191,7 +203,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     opacity: 0.7,
     marginVertical: 20,
-    color: '#FF6B6B',
+    color: Colors.primary,
   },
   searchContainer: {
     paddingHorizontal: 16,
@@ -206,7 +218,7 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 10,
     paddingLeft: 34,
-    paddingRight: 12,
+    paddingRight: 34,
     paddingVertical: 0,
     fontSize: 16,
     fontWeight: '400',
@@ -222,6 +234,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 1,
+  },
+  clearButton: {
+    position: 'absolute',
+    right: 10,
+    top: 0,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+    paddingHorizontal: 4,
   },
   noResultsContainer: {
     flex: 1,

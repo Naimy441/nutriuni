@@ -1,6 +1,7 @@
 import { RestaurantExplorer } from '@/components/RestaurantExplorer';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
+import { Colors } from '@/constants/Colors';
 import React from 'react';
 import { StyleSheet } from 'react-native';
 
@@ -9,7 +10,7 @@ export default function TabTwoScreen() {
     <ThemedView style={styles.container}>
       <ThemedView style={styles.header}>
         <ThemedText type="title" style={styles.title}>Explore Menus</ThemedText>
-        <ThemedText style={styles.subtitle}>Browse Duke dining options</ThemedText>
+        <ThemedText style={styles.subtitle}>Browse Duke University dining options</ThemedText>
       </ThemedView>
       
       <RestaurantExplorer />
@@ -30,7 +31,7 @@ const styles = StyleSheet.create({
   },
   title: {
     marginBottom: 8,
-    color: '#4ECDC4',
+    color: Colors.primary,
   },
   subtitle: {
     fontSize: 16,

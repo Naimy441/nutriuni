@@ -1,25 +1,42 @@
+import { EditGoalsModal } from '@/components/EditGoalsModal';
 import { NutritionCard } from '@/components/NutritionCard';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
+import { Colors } from '@/constants/Colors';
 import { useNutritionTracker } from '@/services/NutritionTracker';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 
-// Nutrition targets - you can make these configurable later
-const NUTRITION_TARGETS = {
-  calories: 2000,
-  protein: 120,
-  carbs: 250,
-  fat: 65,
-  fiber: 25,
-  sugar: 50,
-};
+interface NutritionGoals {
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber: number;
+  sugar: number;
+}
 
 export default function HomeScreen() {
   const { dailyNutrition, todaysItems, isLoading, removeItem, clearAll, refresh } = useNutritionTracker();
   const [showItemsList, setShowItemsList] = useState(false);
+  const [showEditGoalsModal, setShowEditGoalsModal] = useState(false);
+  const [nutritionGoals, setNutritionGoals] = useState<NutritionGoals>({
+    calories: 2000,
+    protein: 120,
+    carbs: 250,
+    fat: 65,
+    fiber: 25,
+    sugar: 50,
+  });
+  const [isLoadingGoals, setIsLoadingGoals] = useState(true);
+
+  // Load nutrition goals on mount
+  useEffect(() => {
+    loadNutritionGoals();
+  }, []);
 
   // Refresh nutrition data when screen comes into focus
   useFocusEffect(
@@ -27,6 +44,20 @@ export default function HomeScreen() {
       refresh();
     }, [refresh])
   );
+
+  const loadNutritionGoals = async () => {
+    try {
+      const savedGoals = await AsyncStorage.getItem('nutrition_goals');
+      if (savedGoals) {
+        const goals = JSON.parse(savedGoals);
+        setNutritionGoals(goals);
+      }
+    } catch (error) {
+      console.error('Error loading nutrition goals:', error);
+    } finally {
+      setIsLoadingGoals(false);
+    }
+  };
 
   // Get current date string
   const getCurrentDate = () => {
@@ -68,6 +99,17 @@ export default function HomeScreen() {
     );
   };
 
+  // Show loading while loading goals
+  if (isLoadingGoals) {
+    return (
+      <ThemedView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ThemedText>Loading your nutrition goals...</ThemedText>
+        </View>
+      </ThemedView>
+    );
+  }
+
   return (
     <ThemedView style={styles.container}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
@@ -90,9 +132,9 @@ export default function HomeScreen() {
             <NutritionCard
               title="Calories"
               current={dailyNutrition.calories}
-              target={NUTRITION_TARGETS.calories}
+              target={nutritionGoals.calories}
               unit="kcal"
-              color="#FF6B6B"
+              color={Colors.primary}
               size={140}
             />
           </View>
@@ -105,25 +147,25 @@ export default function HomeScreen() {
             <NutritionCard
               title="Protein"
               current={dailyNutrition.protein}
-              target={NUTRITION_TARGETS.protein}
+              target={nutritionGoals.protein}
               unit="g"
-              color="#4ECDC4"
+              color="#E74C3C"
               size={100}
             />
             <NutritionCard
               title="Carbs"
               current={dailyNutrition.carbs}
-              target={NUTRITION_TARGETS.carbs}
+              target={nutritionGoals.carbs}
               unit="g"
-              color="#45B7D1"
+              color="#3498DB"
               size={100}
             />
             <NutritionCard
               title="Fat"
               current={dailyNutrition.fat}
-              target={NUTRITION_TARGETS.fat}
+              target={nutritionGoals.fat}
               unit="g"
-              color="#F7DC6F"
+              color="#F39C12"
               size={100}
             />
           </View>
@@ -136,37 +178,20 @@ export default function HomeScreen() {
             <NutritionCard
               title="Fiber"
               current={dailyNutrition.fiber}
-              target={NUTRITION_TARGETS.fiber}
+              target={nutritionGoals.fiber}
               unit="g"
-              color="#A8E6CF"
+              color="#9B59B6"
               size={90}
             />
             <NutritionCard
               title="Sugar"
               current={dailyNutrition.sugar}
-              target={NUTRITION_TARGETS.sugar}
+              target={nutritionGoals.sugar}
               unit="g"
-              color="#FFB3BA"
+              color="#E91E63"
               size={90}
             />
           </View>
-
-          {/* Quick Stats */}
-          <ThemedView style={styles.quickStats}>
-            <ThemedText type="defaultSemiBold" style={styles.quickStatsTitle}>
-              Quick Stats
-            </ThemedText>
-            <View style={styles.statsRow}>
-              <ThemedText style={styles.statText}>
-                Remaining: {NUTRITION_TARGETS.calories - dailyNutrition.calories} kcal
-              </ThemedText>
-            </View>
-            <View style={styles.statsRow}>
-              <ThemedText style={styles.statText}>
-                Protein: {Math.round((dailyNutrition.protein / NUTRITION_TARGETS.protein) * 100)}% of goal
-              </ThemedText>
-            </View>
-          </ThemedView>
 
           {/* Today's Items */}
           {todaysItems.length > 0 && (
@@ -183,11 +208,11 @@ export default function HomeScreen() {
                     <Ionicons 
                       name={showItemsList ? "chevron-up" : "chevron-down"} 
                       size={20} 
-                      color="#4ECDC4" 
+                      color={Colors.primary} 
                     />
                   </TouchableOpacity>
                   <TouchableOpacity onPress={handleClearAll} style={styles.clearButton}>
-                    <Ionicons name="trash-outline" size={18} color="#FF6B6B" />
+                    <Ionicons name="trash-outline" size={18} color={Colors.primary} />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -206,7 +231,7 @@ export default function HomeScreen() {
                         onPress={() => handleRemoveItem(item.id)}
                         style={styles.removeButton}
                       >
-                        <Ionicons name="close" size={16} color="#FF6B6B" />
+                        <Ionicons name="close" size={16} color={Colors.primary} />
                       </TouchableOpacity>
                     </View>
                   ))}
@@ -215,7 +240,29 @@ export default function HomeScreen() {
             </ThemedView>
           )}
         </ThemedView>
+
+        {/* Edit Goals Button - Bottom of content */}
+        <View style={styles.bottomButtonContainer}>
+          <TouchableOpacity 
+            onPress={() => setShowEditGoalsModal(true)}
+            style={styles.editGoalsButton}
+          >
+            <Ionicons name="settings-outline" size={14} color={Colors.primary} />
+            <ThemedText style={styles.editGoalsButtonText}>Edit Goals</ThemedText>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
+
+      {/* Edit Goals Modal */}
+      <EditGoalsModal
+        visible={showEditGoalsModal}
+        currentGoals={nutritionGoals}
+        onClose={() => setShowEditGoalsModal(false)}
+        onSave={(newGoals) => {
+          setNutritionGoals(newGoals);
+          setShowEditGoalsModal(false);
+        }}
+      />
     </ThemedView>
   );
 }
@@ -234,7 +281,7 @@ const styles = StyleSheet.create({
   },
   title: {
     marginBottom: 8,
-    color: '#FF6B6B',
+    color: Colors.primary,
   },
   date: {
     fontSize: 16,
@@ -246,6 +293,27 @@ const styles = StyleSheet.create({
   sectionTitle: {
     marginBottom: 20,
     textAlign: 'center',
+    fontSize: 18,
+  },
+  bottomButtonContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    paddingBottom: 40,
+    alignItems: 'center',
+  },
+  editGoalsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+  },
+  editGoalsButtonText: {
+    fontSize: 14,
+    color: Colors.primary,
+    marginLeft: 4,
+    fontWeight: '400',
+    opacity: 0.6,
   },
   caloriesContainer: {
     alignItems: 'center',
@@ -331,5 +399,10 @@ const styles = StyleSheet.create({
   removeButton: {
     padding: 4,
     marginLeft: 8,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

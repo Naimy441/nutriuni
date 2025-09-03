@@ -1,8 +1,8 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
+import { CircularProgress } from './CircularProgress';
 import { ThemedText } from './ThemedText';
 import { ThemedView } from './ThemedView';
-import { CircularProgress } from './CircularProgress';
 
 interface NutritionCardProps {
   title: string;
@@ -21,8 +21,8 @@ export function NutritionCard({
   color,
   size = 100,
 }: NutritionCardProps) {
-  const progress = Math.min(current / target, 1);
-  const percentage = Math.round(progress * 100);
+  const progress = Math.min(current / target, 1); // Still cap visual progress at 100%
+  const percentage = Math.round((current / target) * 100); // But show actual percentage
 
   return (
     <ThemedView style={styles.container}>

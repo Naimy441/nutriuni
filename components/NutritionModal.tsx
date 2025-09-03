@@ -1,8 +1,11 @@
+import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { MenuItem } from '@/services/MenuDatabase';
+import { useNutritionTracker } from '@/services/NutritionTracker';
+import { Ionicons } from '@expo/vector-icons';
 import { BottomSheetModal, BottomSheetScrollView } from '@gorhom/bottom-sheet';
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { ThemedText } from './ThemedText';
 import { ThemedView } from './ThemedView';
 
@@ -10,11 +13,14 @@ interface NutritionModalProps {
   visible: boolean;
   menuItem: MenuItem | null;
   onClose: () => void;
+  restaurantName?: string;
 }
 
-export function NutritionModal({ visible, menuItem, onClose }: NutritionModalProps) {
+export function NutritionModal({ visible, menuItem, onClose, restaurantName }: NutritionModalProps) {
   const bottomSheetRef = useRef<BottomSheetModal>(null);
   const colorScheme = useColorScheme();
+  const { addItem } = useNutritionTracker();
+  const [isAdding, setIsAdding] = useState(false);
 
   // Fixed snap points with scrollable content
   const snapPoints = useMemo(() => ['25%', '60%', '90%', '100%'], []);
@@ -34,6 +40,31 @@ export function NutritionModal({ visible, menuItem, onClose }: NutritionModalPro
       bottomSheetRef.current?.dismiss();
     }
   }, [visible, menuItem]);
+
+  const handleAddToDaily = async () => {
+    if (!menuItem || !restaurantName) return;
+    
+    setIsAdding(true);
+    
+    try {
+      await addItem(menuItem, restaurantName);
+      
+      Alert.alert(
+        'Added to Daily Intake',
+        `${menuItem.name} has been added to your daily nutrition tracking.`,
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      console.error('Error adding item:', error);
+      Alert.alert(
+        'Error',
+        'Failed to add item to your daily intake. Please try again.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsAdding(false);
+    }
+  };
 
   if (!menuItem) return null;
 
@@ -177,6 +208,25 @@ export function NutritionModal({ visible, menuItem, onClose }: NutritionModalPro
               * The % Daily Value (DV) tells you how much a nutrient in a serving of food contributes to a daily diet. 2,000 calories a day is used for general nutrition advice.
             </ThemedText>
           </ThemedView>
+
+          {/* Add to Daily Intake Button */}
+          {restaurantName && (
+            <TouchableOpacity
+              style={[styles.addToDailyButton, isAdding && styles.addToDailyButtonLoading]}
+              onPress={handleAddToDaily}
+              disabled={isAdding}
+            >
+              <Ionicons 
+                name={isAdding ? "hourglass" : "add-circle"} 
+                size={24} 
+                color="#FFFFFF" 
+                style={styles.addButtonIcon}
+              />
+              <ThemedText style={styles.addToDailyButtonText}>
+                {isAdding ? 'Adding...' : 'Add to Daily Intake'}
+              </ThemedText>
+            </TouchableOpacity>
+          )}
       </BottomSheetScrollView>
     </BottomSheetModal>
   );
@@ -225,14 +275,14 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   title: {
-    color: '#FF6B6B',
+    color: Colors.primary,
     flex: 1,
     fontSize: 20,
     lineHeight: 24,
     paddingVertical: 2,
   },
   halalBadge: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: Colors.primary,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
@@ -268,7 +318,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     marginBottom: 10,
-    color: '#4ECDC4',
+    color: Colors.primary,
     fontSize: 16,
   },
   servingInfo: {
@@ -283,9 +333,9 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     padding: 14,
     borderRadius: 10,
-    backgroundColor: 'rgba(255, 107, 107, 0.1)',
+    backgroundColor: 'rgba(0, 104, 56, 0.1)',
     borderWidth: 2,
-    borderColor: '#FF6B6B',
+    borderColor: Colors.primary,
   },
   caloriesRow: {
     flexDirection: 'row',
@@ -293,10 +343,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   caloriesLabel: {
-    color: '#FF6B6B',
+    color: Colors.primary,
   },
   caloriesValue: {
-    color: '#FF6B6B',
+    color: Colors.primary,
     fontSize: 32,
   },
   nutrientsContainer: {
@@ -346,5 +396,27 @@ const styles = StyleSheet.create({
     opacity: 0.7,
     fontStyle: 'italic',
     lineHeight: 18,
+  },
+  addToDailyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    marginTop: 20,
+    marginBottom: 10,
+  },
+  addToDailyButtonLoading: {
+    opacity: 0.7,
+  },
+  addButtonIcon: {
+    marginRight: 8,
+  },
+  addToDailyButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });
