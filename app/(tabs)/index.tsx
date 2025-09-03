@@ -1,28 +1,32 @@
-import React, { useState, useEffect } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { NutritionCard } from '@/components/NutritionCard';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
-import { NutritionCard } from '@/components/NutritionCard';
+import { useNutritionTracker } from '@/services/NutritionTracker';
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
+import React, { useCallback, useState } from 'react';
+import { Alert, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 
-// Mock nutrition data - you'll replace this with real data later
-interface NutritionData {
-  calories: { current: number; target: number };
-  protein: { current: number; target: number };
-  carbs: { current: number; target: number };
-  fat: { current: number; target: number };
-  fiber: { current: number; target: number };
-  sugar: { current: number; target: number };
-}
+// Nutrition targets - you can make these configurable later
+const NUTRITION_TARGETS = {
+  calories: 2000,
+  protein: 120,
+  carbs: 250,
+  fat: 65,
+  fiber: 25,
+  sugar: 50,
+};
 
 export default function HomeScreen() {
-  const [nutritionData, setNutritionData] = useState<NutritionData>({
-    calories: { current: 1450, target: 2000 },
-    protein: { current: 85, target: 120 },
-    carbs: { current: 180, target: 250 },
-    fat: { current: 45, target: 65 },
-    fiber: { current: 18, target: 25 },
-    sugar: { current: 35, target: 50 },
-  });
+  const { dailyNutrition, todaysItems, isLoading, removeItem, clearAll, refresh } = useNutritionTracker();
+  const [showItemsList, setShowItemsList] = useState(false);
+
+  // Refresh nutrition data when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
 
   // Get current date string
   const getCurrentDate = () => {
@@ -33,6 +37,35 @@ export default function HomeScreen() {
       month: 'long',
       day: 'numeric',
     });
+  };
+
+  const handleRemoveItem = async (itemId: string) => {
+    try {
+      await removeItem(itemId);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to remove item. Please try again.');
+    }
+  };
+
+  const handleClearAll = () => {
+    Alert.alert(
+      'Clear All Items',
+      'Are you sure you want to clear all items from today\'s log? This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Clear All', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await clearAll();
+            } catch (error) {
+              Alert.alert('Error', 'Failed to clear items. Please try again.');
+            }
+          }
+        },
+      ]
+    );
   };
 
   return (
@@ -56,8 +89,8 @@ export default function HomeScreen() {
           <View style={styles.caloriesContainer}>
             <NutritionCard
               title="Calories"
-              current={nutritionData.calories.current}
-              target={nutritionData.calories.target}
+              current={dailyNutrition.calories}
+              target={NUTRITION_TARGETS.calories}
               unit="kcal"
               color="#FF6B6B"
               size={140}
@@ -71,24 +104,24 @@ export default function HomeScreen() {
           <View style={styles.macrosGrid}>
             <NutritionCard
               title="Protein"
-              current={nutritionData.protein.current}
-              target={nutritionData.protein.target}
+              current={dailyNutrition.protein}
+              target={NUTRITION_TARGETS.protein}
               unit="g"
               color="#4ECDC4"
               size={100}
             />
             <NutritionCard
               title="Carbs"
-              current={nutritionData.carbs.current}
-              target={nutritionData.carbs.target}
+              current={dailyNutrition.carbs}
+              target={NUTRITION_TARGETS.carbs}
               unit="g"
               color="#45B7D1"
               size={100}
             />
             <NutritionCard
               title="Fat"
-              current={nutritionData.fat.current}
-              target={nutritionData.fat.target}
+              current={dailyNutrition.fat}
+              target={NUTRITION_TARGETS.fat}
               unit="g"
               color="#F7DC6F"
               size={100}
@@ -102,16 +135,16 @@ export default function HomeScreen() {
           <View style={styles.macrosGrid}>
             <NutritionCard
               title="Fiber"
-              current={nutritionData.fiber.current}
-              target={nutritionData.fiber.target}
+              current={dailyNutrition.fiber}
+              target={NUTRITION_TARGETS.fiber}
               unit="g"
               color="#A8E6CF"
               size={90}
             />
             <NutritionCard
               title="Sugar"
-              current={nutritionData.sugar.current}
-              target={nutritionData.sugar.target}
+              current={dailyNutrition.sugar}
+              target={NUTRITION_TARGETS.sugar}
               unit="g"
               color="#FFB3BA"
               size={90}
@@ -125,15 +158,62 @@ export default function HomeScreen() {
             </ThemedText>
             <View style={styles.statsRow}>
               <ThemedText style={styles.statText}>
-                Remaining: {nutritionData.calories.target - nutritionData.calories.current} kcal
+                Remaining: {NUTRITION_TARGETS.calories - dailyNutrition.calories} kcal
               </ThemedText>
             </View>
             <View style={styles.statsRow}>
               <ThemedText style={styles.statText}>
-                Protein: {Math.round((nutritionData.protein.current / nutritionData.protein.target) * 100)}% of goal
+                Protein: {Math.round((dailyNutrition.protein / NUTRITION_TARGETS.protein) * 100)}% of goal
               </ThemedText>
             </View>
           </ThemedView>
+
+          {/* Today's Items */}
+          {todaysItems.length > 0 && (
+            <ThemedView style={styles.itemsSection}>
+              <View style={styles.itemsHeader}>
+                <ThemedText type="defaultSemiBold" style={styles.itemsTitle}>
+                  Today's Items ({todaysItems.length})
+                </ThemedText>
+                <View style={styles.itemsActions}>
+                  <TouchableOpacity 
+                    onPress={() => setShowItemsList(!showItemsList)}
+                    style={styles.toggleButton}
+                  >
+                    <Ionicons 
+                      name={showItemsList ? "chevron-up" : "chevron-down"} 
+                      size={20} 
+                      color="#4ECDC4" 
+                    />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={handleClearAll} style={styles.clearButton}>
+                    <Ionicons name="trash-outline" size={18} color="#FF6B6B" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {showItemsList && (
+                <View style={styles.itemsList}>
+                  {todaysItems.map((item) => (
+                    <View key={item.id} style={styles.itemRow}>
+                      <View style={styles.itemInfo}>
+                        <ThemedText style={styles.itemName}>{item.name}</ThemedText>
+                        <ThemedText style={styles.itemDetails}>
+                          {item.restaurant} • {item.calories} cal • {item.serving_size}
+                        </ThemedText>
+                      </View>
+                      <TouchableOpacity 
+                        onPress={() => handleRemoveItem(item.id)}
+                        style={styles.removeButton}
+                      >
+                        <Ionicons name="close" size={16} color="#FF6B6B" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </ThemedView>
+          )}
         </ThemedView>
       </ScrollView>
     </ThemedView>
@@ -199,5 +279,57 @@ const styles = StyleSheet.create({
   statText: {
     textAlign: 'center',
     opacity: 0.8,
+  },
+  itemsSection: {
+    marginTop: 20,
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  itemsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  itemsTitle: {
+    fontSize: 16,
+  },
+  itemsActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  toggleButton: {
+    padding: 4,
+  },
+  clearButton: {
+    padding: 4,
+  },
+  itemsList: {
+    gap: 8,
+  },
+  itemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+  },
+  itemInfo: {
+    flex: 1,
+  },
+  itemName: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  itemDetails: {
+    fontSize: 12,
+    opacity: 0.7,
+  },
+  removeButton: {
+    padding: 4,
+    marginLeft: 8,
   },
 });
