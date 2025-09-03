@@ -6,13 +6,13 @@ import { menuDatabase, MenuItem, Restaurant } from '@/services/MenuDatabase';
 import { useNutritionTracker } from '@/services/NutritionTracker';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Alert, Animated, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 
 export default function RestaurantPage() {
   const { name } = useLocalSearchParams<{ name: string }>();
   const router = useRouter();
-  const { addItem } = useNutritionTracker();
+  const { addItem, removeItem, todaysItems } = useNutritionTracker();
   
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [loading, setLoading] = useState(true);
@@ -21,10 +21,23 @@ export default function RestaurantPage() {
   const [selectedMenuItem, setSelectedMenuItem] = useState<MenuItem | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [addingItems, setAddingItems] = useState<Set<string>>(new Set());
+  const [undoItem, setUndoItem] = useState<{menuItem: MenuItem, restaurantName: string, timestamp: number} | null>(null);
+  const [showUndo, setShowUndo] = useState(false);
+  const undoOpacity = useRef(new Animated.Value(0)).current;
+  const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     loadRestaurant();
   }, [name]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (undoTimeoutRef.current) {
+        clearTimeout(undoTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const loadRestaurant = async () => {
     if (!name) return;
@@ -62,6 +75,64 @@ export default function RestaurantPage() {
     setModalVisible(true);
   };
 
+  const showUndoNotification = (menuItem: MenuItem, restaurantName: string) => {
+    // Clear any existing timeout
+    if (undoTimeoutRef.current) {
+      clearTimeout(undoTimeoutRef.current);
+    }
+
+    // Set undo item data
+    setUndoItem({ menuItem, restaurantName, timestamp: Date.now() });
+    setShowUndo(true);
+
+    // Animate in
+    Animated.timing(undoOpacity, {
+      toValue: 1,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+
+    // Auto hide after 4 seconds
+    undoTimeoutRef.current = setTimeout(() => {
+      hideUndoNotification();
+    }, 4000);
+  };
+
+  const hideUndoNotification = () => {
+    Animated.timing(undoOpacity, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => {
+      setShowUndo(false);
+      setUndoItem(null);
+    });
+
+    if (undoTimeoutRef.current) {
+      clearTimeout(undoTimeoutRef.current);
+      undoTimeoutRef.current = null;
+    }
+  };
+
+  const handleUndo = async () => {
+    if (!undoItem) return;
+
+    try {
+      // Find the most recently added item that matches
+      const recentItem = todaysItems
+        .filter(item => item.name === undoItem.menuItem.name && item.restaurant === undoItem.restaurantName)
+        .sort((a, b) => b.timestamp - a.timestamp)[0];
+
+      if (recentItem) {
+        await removeItem(recentItem.id);
+        hideUndoNotification();
+      }
+    } catch (error) {
+      console.error('Error undoing item:', error);
+      Alert.alert('Error', 'Failed to undo. Please try removing the item manually.');
+    }
+  };
+
   const handleAddItem = async (menuItem: MenuItem) => {
     if (!restaurant) return;
     
@@ -71,12 +142,8 @@ export default function RestaurantPage() {
     try {
       await addItem(menuItem, restaurant.name);
       
-      // Show success feedback
-      Alert.alert(
-        'Added to Daily Intake',
-        `${menuItem.name} has been added to your daily nutrition tracking.`,
-        [{ text: 'OK' }]
-      );
+      // Show undo notification instead of alert
+      showUndoNotification(menuItem, restaurant.name);
     } catch (error) {
       console.error('Error adding item:', error);
       Alert.alert(
@@ -104,7 +171,14 @@ export default function RestaurantPage() {
           onPress={() => handleMenuItemPress(menuItem)}
         >
           <View style={styles.menuItemContent}>
-            <ThemedText style={styles.menuItemName}>{menuItem.name}</ThemedText>
+            <View style={styles.menuItemTitleRow}>
+              <ThemedText style={styles.menuItemName}>{menuItem.name}</ThemedText>
+              {menuItem.is_halal && (
+                <View style={styles.halalBadge}>
+                  <ThemedText style={styles.halalText}>Halal</ThemedText>
+                </View>
+              )}
+            </View>
             <View style={styles.menuItemDetails}>
               <ThemedText style={styles.menuItemCalories}>
                 {menuItem.nutrition.calories} cal
@@ -112,11 +186,6 @@ export default function RestaurantPage() {
               <ThemedText style={styles.menuItemServing}>
                 {menuItem.nutrition.serving_info.serving_size}
               </ThemedText>
-              {menuItem.is_halal && (
-                <View style={styles.halalBadge}>
-                  <ThemedText style={styles.halalText}>Halal</ThemedText>
-                </View>
-              )}
             </View>
           </View>
           <View style={styles.menuItemArrow}>
@@ -238,6 +307,25 @@ export default function RestaurantPage() {
         }}
         restaurantName={restaurant?.name}
       />
+
+      {/* Undo Notification */}
+      {showUndo && undoItem && (
+        <Animated.View 
+          style={[
+            styles.undoContainer,
+            { opacity: undoOpacity }
+          ]}
+        >
+          <View style={styles.undoContent}>
+            <ThemedText style={styles.undoText}>
+              Added {undoItem.menuItem.name}
+            </ThemedText>
+            <TouchableOpacity onPress={handleUndo} style={styles.undoButton}>
+              <ThemedText style={styles.undoButtonText}>UNDO</ThemedText>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+      )}
     </ThemedView>
   );
 }
@@ -347,10 +435,16 @@ const styles = StyleSheet.create({
   menuItemContent: {
     flex: 1,
   },
+  menuItemTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    flexWrap: 'wrap',
+  },
   menuItemName: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 8,
+    marginRight: 8,
   },
   menuItemDetails: {
     flexDirection: 'row',
@@ -368,12 +462,13 @@ const styles = StyleSheet.create({
   },
   halalBadge: {
     backgroundColor: Colors.primary,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    flexShrink: 0,
   },
   halalText: {
-    fontSize: 10,
+    fontSize: 11,
     color: 'white',
     fontWeight: 'bold',
   },
@@ -409,5 +504,40 @@ const styles = StyleSheet.create({
   },
   addButtonLoading: {
     opacity: 0.5,
+  },
+  undoContainer: {
+    position: 'absolute',
+    bottom: 100,
+    left: 20,
+    right: 20,
+    zIndex: 1000,
+  },
+  undoContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#323232',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  undoText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    flex: 1,
+  },
+  undoButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  undoButtonText: {
+    color: Colors.primary,
+    fontSize: 14,
+    fontWeight: 'bold',
   },
 });

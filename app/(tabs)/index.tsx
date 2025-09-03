@@ -2,8 +2,9 @@ import { EditGoalsModal } from '@/components/EditGoalsModal';
 import { NutritionCard } from '@/components/NutritionCard';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
+import { TrackedItemModal } from '@/components/TrackedItemModal';
 import { Colors } from '@/constants/Colors';
-import { useNutritionTracker } from '@/services/NutritionTracker';
+import { TrackedItem, useNutritionTracker } from '@/services/NutritionTracker';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
@@ -23,6 +24,8 @@ export default function HomeScreen() {
   const { dailyNutrition, todaysItems, isLoading, removeItem, clearAll, refresh } = useNutritionTracker();
   const [showItemsList, setShowItemsList] = useState(false);
   const [showEditGoalsModal, setShowEditGoalsModal] = useState(false);
+  const [selectedTrackedItem, setSelectedTrackedItem] = useState<TrackedItem | null>(null);
+  const [showTrackedItemModal, setShowTrackedItemModal] = useState(false);
   const [nutritionGoals, setNutritionGoals] = useState<NutritionGoals>({
     calories: 2000,
     protein: 120,
@@ -99,6 +102,11 @@ export default function HomeScreen() {
     );
   };
 
+  const handleItemPress = (item: TrackedItem) => {
+    setSelectedTrackedItem(item);
+    setShowTrackedItemModal(true);
+  };
+
   // Show loading while loading goals
   if (isLoadingGoals) {
     return (
@@ -112,7 +120,14 @@ export default function HomeScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.scrollView} 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        scrollEventThrottle={16}
+        contentInsetAdjustmentBehavior="never"
+      >
         {/* Header */}
         <ThemedView style={styles.header}>
           <ThemedText type="title" style={styles.title}>
@@ -221,12 +236,15 @@ export default function HomeScreen() {
                 <View style={styles.itemsList}>
                   {todaysItems.map((item) => (
                     <View key={item.id} style={styles.itemRow}>
-                      <View style={styles.itemInfo}>
+                      <TouchableOpacity 
+                        style={styles.itemInfo}
+                        onPress={() => handleItemPress(item)}
+                      >
                         <ThemedText style={styles.itemName}>{item.name}</ThemedText>
                         <ThemedText style={styles.itemDetails}>
                           {item.restaurant} • {item.calories} cal • {item.serving_size}
                         </ThemedText>
-                      </View>
+                      </TouchableOpacity>
                       <TouchableOpacity 
                         onPress={() => handleRemoveItem(item.id)}
                         style={styles.removeButton}
@@ -263,6 +281,16 @@ export default function HomeScreen() {
           setShowEditGoalsModal(false);
         }}
       />
+
+      {/* Tracked Item Modal */}
+      <TrackedItemModal
+        visible={showTrackedItemModal}
+        trackedItem={selectedTrackedItem}
+        onClose={() => {
+          setShowTrackedItemModal(false);
+          setSelectedTrackedItem(null);
+        }}
+      />
     </ThemedView>
   );
 }
@@ -273,6 +301,10 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 20,
   },
   header: {
     padding: 20,
@@ -298,7 +330,7 @@ const styles = StyleSheet.create({
   bottomButtonContainer: {
     paddingHorizontal: 20,
     paddingVertical: 20,
-    paddingBottom: 40,
+    paddingBottom: 60,
     alignItems: 'center',
   },
   editGoalsButton: {
