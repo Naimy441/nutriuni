@@ -2,7 +2,7 @@ import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useState } from 'react';
-import { Alert, Animated, Dimensions, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, Dimensions, Image, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { ThemedText } from './ThemedText';
 import { ThemedView } from './ThemedView';
 
@@ -147,7 +147,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
     saveCurrentStepData(value);
     
     // Animate to next step
-    if (currentStep < 5) {
+    if (currentStep < 6) {
       animateTransition(() => {
         setCurrentStep(prev => prev + 1);
       });
@@ -158,12 +158,13 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
 
   const getCurrentValue = (): any => {
     switch (currentStep) {
-      case 0: return age;
-      case 1: return weight;
-      case 2: return { feet: heightFeet, inches: heightInches };
-      case 3: return profile.gender;
-      case 4: return profile.activityLevel;
-      case 5: return profile.goal;
+      case 0: return null; // Welcome screen
+      case 1: return age;
+      case 2: return weight;
+      case 3: return { feet: heightFeet, inches: heightInches };
+      case 4: return profile.gender;
+      case 5: return profile.activityLevel;
+      case 6: return profile.goal;
       default: return null;
     }
   };
@@ -171,20 +172,24 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   const validateCurrentStep = (value: any): { isValid: boolean; message: string } => {
     switch (currentStep) {
       case 0:
+        // Welcome screen - no validation needed
+        return { isValid: true, message: '' };
+      
+      case 1:
         const ageNum = parseInt(value);
         if (!ageNum || ageNum < 13 || ageNum > 100) {
           return { isValid: false, message: 'Please enter an age between 13 and 100.' };
         }
         return { isValid: true, message: '' };
       
-      case 1:
+      case 2:
         const weightNum = parseFloat(value);
         if (!weightNum || weightNum < 70 || weightNum > 600) {
           return { isValid: false, message: 'Please enter a weight between 70 and 600 pounds.' };
         }
         return { isValid: true, message: '' };
       
-      case 2:
+      case 3:
         const feetNum = parseInt(value.feet);
         const inchesNum = parseInt(value.inches || '0');
         if (!feetNum || feetNum < 4 || feetNum > 7) {
@@ -195,9 +200,9 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
         }
         return { isValid: true, message: '' };
       
-      case 3:
       case 4:
       case 5:
+      case 6:
         if (!value) {
           return { isValid: false, message: 'Please make a selection.' };
         }
@@ -211,12 +216,15 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   const saveCurrentStepData = (value: any) => {
     switch (currentStep) {
       case 0:
-        setProfile(prev => ({ ...prev, age: parseInt(value) }));
+        // Welcome screen - no data to save
         break;
       case 1:
-        setProfile(prev => ({ ...prev, weight: parseFloat(value) }));
+        setProfile(prev => ({ ...prev, age: parseInt(value) }));
         break;
       case 2:
+        setProfile(prev => ({ ...prev, weight: parseFloat(value) }));
+        break;
+      case 3:
         setProfile(prev => ({ 
           ...prev, 
           heightFeet: parseInt(value.feet), 
@@ -251,10 +259,16 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   const getStepData = () => {
     const steps = [
       {
+        question: "Welcome to nutriuni!",
+        subtitle: "Your personal nutrition companion for dining",
+        type: 'welcome',
+        description: "We'll help you track your nutrition goals and make informed dining choices across Duke's campus restaurants. To get started, we need to learn a bit about you to calculate personalized nutrition targets.",
+      },
+      {
         question: "What's your age?",
         subtitle: "We use this to calculate your metabolism",
         type: 'input',
-        placeholder: 'e.g. 25',
+        placeholder: 'e.g. 20',
         keyboardType: 'numeric' as const,
         value: age,
         setValue: setAge,
@@ -335,7 +349,20 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
           </ThemedText>
         </View>
 
-        {stepData.type === 'input' ? (
+        {stepData.type === 'welcome' ? (
+          <View style={styles.welcomeContainer}>
+            <View style={styles.logoContainer}>
+              <Image 
+                source={require('../assets/images/nutriuni.png')} 
+                style={styles.logoImage}
+                resizeMode="contain"
+              />
+            </View>
+            <ThemedText style={styles.welcomeDescription}>
+              {stepData.description}
+            </ThemedText>
+          </View>
+        ) : stepData.type === 'input' ? (
           <View style={styles.inputContainer}>
             <TextInput
               style={[styles.input, { 
@@ -397,7 +424,11 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
             </View>
           </View>
         ) : (
-          <View style={styles.optionsContainer}>
+          <ScrollView 
+            style={styles.optionsContainer}
+            contentContainerStyle={styles.optionsContent}
+            showsVerticalScrollIndicator={false}
+          >
             {stepData.options?.map((option) => (
               <TouchableOpacity
                 key={option.value}
@@ -406,11 +437,11 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
                   getCurrentValue() === option.value && styles.optionButtonSelected
                 ]}
                 onPress={() => {
-                  if (currentStep === 3) {
+                  if (currentStep === 4) {
                     setProfile(prev => ({ ...prev, gender: option.value as 'male' | 'female' }));
-                  } else if (currentStep === 4) {
-                    setProfile(prev => ({ ...prev, activityLevel: option.value as number }));
                   } else if (currentStep === 5) {
+                    setProfile(prev => ({ ...prev, activityLevel: option.value as number }));
+                  } else if (currentStep === 6) {
                     setProfile(prev => ({ ...prev, goal: option.value as 'maintain' | 'lose' | 'gain' }));
                   }
                 }}
@@ -431,7 +462,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
                 )}
               </TouchableOpacity>
             ))}
-          </View>
+          </ScrollView>
         )}
       </Animated.View>
     );
@@ -446,13 +477,13 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
               style={[
                 styles.progressBarFill,
                 {
-                  width: `${((currentStep + 1) / 6) * 100}%`,
+                  width: `${((currentStep + 1) / 7) * 100}%`,
                 }
               ]}
             />
           </View>
           <ThemedText style={styles.stepCounter}>
-            {currentStep + 1} of 6
+            {currentStep + 1} of 7
           </ThemedText>
         </View>
       </View>
@@ -467,7 +498,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
           onPress={validateAndNext}
         >
           <ThemedText style={styles.nextButtonText}>
-            {currentStep === 5 ? 'Complete Setup' : 'Continue'}
+            {currentStep === 6 ? 'Complete Setup' : currentStep === 0 ? 'Get Started' : 'Continue'}
           </ThemedText>
         </TouchableOpacity>
       </View>
@@ -547,11 +578,15 @@ const styles = StyleSheet.create({
   },
   optionsContainer: {
     width: '100%',
-    gap: 16,
+    maxHeight: 400,
+  },
+  optionsContent: {
+    gap: 12,
+    paddingBottom: 20,
   },
   optionButton: {
-    padding: 20,
-    borderRadius: 16,
+    padding: 16,
+    borderRadius: 12,
     borderWidth: 2,
     borderColor: 'rgba(128, 128, 128, 0.2)',
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
@@ -562,18 +597,20 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(78, 205, 196, 0.15)',
   },
   optionText: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
     textAlign: 'center',
+    lineHeight: 20,
   },
   optionTextSelected: {
     color: Colors.primary,
   },
   optionDesc: {
-    fontSize: 14,
+    fontSize: 13,
     opacity: 0.7,
     textAlign: 'center',
-    marginTop: 6,
+    marginTop: 4,
+    lineHeight: 18,
   },
   optionDescSelected: {
     opacity: 1,
@@ -623,5 +660,47 @@ const styles = StyleSheet.create({
     fontSize: 16,
     opacity: 0.7,
     fontWeight: '500',
+  },
+  welcomeContainer: {
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  logoContainer: {
+    marginBottom: 30,
+    alignItems: 'center',
+  },
+  logoImage: {
+    width: 120,
+    height: 120,
+  },
+  welcomeDescription: {
+    fontSize: 16,
+    lineHeight: 24,
+    textAlign: 'center',
+    opacity: 0.8,
+    marginBottom: 40,
+  },
+  featuresContainer: {
+    width: '100%',
+    gap: 20,
+  },
+  featureItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: 'rgba(0, 104, 56, 0.1)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 104, 56, 0.2)',
+  },
+  featureIcon: {
+    fontSize: 24,
+    marginRight: 16,
+  },
+  featureText: {
+    fontSize: 16,
+    fontWeight: '500',
+    flex: 1,
   },
 });

@@ -116,7 +116,7 @@ export default function HomeScreen() {
         {/* Header */}
         <ThemedView style={styles.header}>
           <ThemedText type="title" style={styles.title}>
-            NutriUni
+            nutriuni
           </ThemedText>
           <ThemedText style={styles.date}>{getCurrentDate()}</ThemedText>
         </ThemedView>
