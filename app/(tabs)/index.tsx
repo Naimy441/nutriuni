@@ -1,75 +1,203 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
-
-import { HelloWave } from '@/components/HelloWave';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
+import React, { useState, useEffect } from 'react';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
+import { NutritionCard } from '@/components/NutritionCard';
+
+// Mock nutrition data - you'll replace this with real data later
+interface NutritionData {
+  calories: { current: number; target: number };
+  protein: { current: number; target: number };
+  carbs: { current: number; target: number };
+  fat: { current: number; target: number };
+  fiber: { current: number; target: number };
+  sugar: { current: number; target: number };
+}
 
 export default function HomeScreen() {
+  const [nutritionData, setNutritionData] = useState<NutritionData>({
+    calories: { current: 1450, target: 2000 },
+    protein: { current: 85, target: 120 },
+    carbs: { current: 180, target: 250 },
+    fat: { current: 45, target: 65 },
+    fiber: { current: 18, target: 25 },
+    sugar: { current: 35, target: 50 },
+  });
+
+  // Get current date string
+  const getCurrentDate = () => {
+    const today = new Date();
+    return today.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  };
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+    <ThemedView style={styles.container}>
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        {/* Header */}
+        <ThemedView style={styles.header}>
+          <ThemedText type="title" style={styles.title}>
+            NutriUni
+          </ThemedText>
+          <ThemedText style={styles.date}>{getCurrentDate()}</ThemedText>
+        </ThemedView>
+
+        {/* Daily Summary */}
+        <ThemedView style={styles.summaryContainer}>
+          <ThemedText type="subtitle" style={styles.sectionTitle}>
+            Daily Progress
+          </ThemedText>
+          
+          {/* Main Calories Card */}
+          <View style={styles.caloriesContainer}>
+            <NutritionCard
+              title="Calories"
+              current={nutritionData.calories.current}
+              target={nutritionData.calories.target}
+              unit="kcal"
+              color="#FF6B6B"
+              size={140}
+            />
+          </View>
+
+          {/* Macros Grid */}
+          <ThemedText type="defaultSemiBold" style={styles.macrosTitle}>
+            Macronutrients
+          </ThemedText>
+          <View style={styles.macrosGrid}>
+            <NutritionCard
+              title="Protein"
+              current={nutritionData.protein.current}
+              target={nutritionData.protein.target}
+              unit="g"
+              color="#4ECDC4"
+              size={100}
+            />
+            <NutritionCard
+              title="Carbs"
+              current={nutritionData.carbs.current}
+              target={nutritionData.carbs.target}
+              unit="g"
+              color="#45B7D1"
+              size={100}
+            />
+            <NutritionCard
+              title="Fat"
+              current={nutritionData.fat.current}
+              target={nutritionData.fat.target}
+              unit="g"
+              color="#F7DC6F"
+              size={100}
+            />
+          </View>
+
+          {/* Additional Nutrients */}
+          <ThemedText type="defaultSemiBold" style={styles.macrosTitle}>
+            Other Nutrients
+          </ThemedText>
+          <View style={styles.macrosGrid}>
+            <NutritionCard
+              title="Fiber"
+              current={nutritionData.fiber.current}
+              target={nutritionData.fiber.target}
+              unit="g"
+              color="#A8E6CF"
+              size={90}
+            />
+            <NutritionCard
+              title="Sugar"
+              current={nutritionData.sugar.current}
+              target={nutritionData.sugar.target}
+              unit="g"
+              color="#FFB3BA"
+              size={90}
+            />
+          </View>
+
+          {/* Quick Stats */}
+          <ThemedView style={styles.quickStats}>
+            <ThemedText type="defaultSemiBold" style={styles.quickStatsTitle}>
+              Quick Stats
+            </ThemedText>
+            <View style={styles.statsRow}>
+              <ThemedText style={styles.statText}>
+                Remaining: {nutritionData.calories.target - nutritionData.calories.current} kcal
+              </ThemedText>
+            </View>
+            <View style={styles.statsRow}>
+              <ThemedText style={styles.statText}>
+                Protein: {Math.round((nutritionData.protein.current / nutritionData.protein.target) * 100)}% of goal
+              </ThemedText>
+            </View>
+          </ThemedView>
+        </ThemedView>
+      </ScrollView>
+    </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
+  container: {
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  header: {
+    padding: 20,
+    paddingTop: 60,
     alignItems: 'center',
-    gap: 8,
   },
-  stepContainer: {
-    gap: 8,
+  title: {
     marginBottom: 8,
+    color: '#FF6B6B',
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  date: {
+    fontSize: 16,
+    opacity: 0.7,
+  },
+  summaryContainer: {
+    padding: 20,
+  },
+  sectionTitle: {
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  caloriesContainer: {
+    alignItems: 'center',
+    marginBottom: 30,
+  },
+  macrosTitle: {
+    marginBottom: 16,
+    marginTop: 8,
+    textAlign: 'center',
+    fontSize: 18,
+  },
+  macrosGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    flexWrap: 'wrap',
+    marginBottom: 20,
+  },
+  quickStats: {
+    marginTop: 20,
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  quickStatsTitle: {
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  statsRow: {
+    marginVertical: 4,
+  },
+  statText: {
+    textAlign: 'center',
+    opacity: 0.8,
   },
 });
