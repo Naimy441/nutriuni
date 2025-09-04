@@ -152,7 +152,7 @@ class MenuDatabaseService {
       'the_skillet.json': require('../assets/restaurants/the_skillet.json'),
       'trinity_cafe.json': require('../assets/restaurants/trinity_cafe.json'),
       'twinnies.json': require('../assets/restaurants/twinnies.json'),
-      'zwelis_café_at_duke_divinity.json': require('../assets/restaurants/zwelis_café_at_duke_divinity.json'),
+      'zwelis_cafe_at_duke_divinity.json': require('../assets/restaurants/zwelis_cafe_at_duke_divinity.json'),
     };
 
     return restaurantFiles[filename] || null;
