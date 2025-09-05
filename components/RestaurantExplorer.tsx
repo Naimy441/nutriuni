@@ -61,7 +61,7 @@ export function RestaurantExplorer() {
             </View>
           </View>
           <View style={styles.arrowButton}>
-            <ThemedText style={styles.arrowIcon}>→</ThemedText>
+            <ThemedText style={styles.arrowIcon}>›</ThemedText>
           </View>
         </TouchableOpacity>
       </ThemedView>
@@ -121,6 +121,7 @@ export function RestaurantExplorer() {
 
       <ScrollView 
         style={styles.scrollView} 
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
         {filteredRestaurants.length > 0 ? (
@@ -144,6 +145,9 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
     padding: 16,
+  },
+  scrollContent: {
+    paddingBottom: 100, // Extra padding at bottom for full scrolling access
   },
   restaurantCard: {
     marginBottom: 16,
@@ -183,16 +187,15 @@ const styles = StyleSheet.create({
     height: 32,
     borderRadius: 16,
     backgroundColor: 'rgba(0, 104, 56, 0.2)',
-    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   arrowIcon: {
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '600',
     color: Colors.primary,
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    transform: [{ translateX: -8 }, { translateY: -15 }],
+    lineHeight: 18,
+    textAlign: 'center',
   },
   loadingText: {
     textAlign: 'center',

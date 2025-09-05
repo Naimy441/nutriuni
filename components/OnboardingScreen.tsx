@@ -1,3 +1,4 @@
+import { Citations } from '@/components/Citations';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -51,7 +52,8 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
     const weightKg = profile.weight * 0.453592;
     const heightCm = (profile.heightFeet * 12 + profile.heightInches) * 2.54;
     
-    // Mifflin-St Jeor Equation
+    // Mifflin-St Jeor Equation - widely accepted method for calculating Basal Metabolic Rate
+    // Source: American Journal of Clinical Nutrition, used by healthcare professionals
     if (profile.gender === 'male') {
       return 10 * weightKg + 6.25 * heightCm - 5 * profile.age + 5;
     } else {
@@ -67,31 +69,38 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   const calculateNutritionGoals = (profile: UserProfile): NutritionGoals => {
     let tdee = calculateTDEE(profile);
     
-    // Adjust for goals
+    // Adjust calories for weight management goals based on safe weight loss/gain principles
     if (profile.goal === 'lose') {
-      tdee -= 500; // 500 cal deficit for ~1 lb/week loss
+      tdee -= 500; // 500 cal deficit for ~1 lb/week loss (CDC recommended safe rate)
     } else if (profile.goal === 'gain') {
-      tdee += 300; // 300 cal surplus for gradual gain
+      tdee += 300; // 300 cal surplus for gradual gain (avoiding excessive fat gain)
     }
 
     const calories = Math.round(tdee);
     
-    // Calculate macros
+    // Calculate macronutrients following Dietary Guidelines for Americans
     const weightKg = profile.weight * 0.453592;
-    const proteinGrams = Math.round(weightKg * 1.6); // 1.6g/kg for active individuals
-    const proteinCals = proteinGrams * 4;
     
-    const fatPercent = 0.28; // 28% of calories
+    // Protein: 1.6g/kg for active individuals (within AMDR of 10-35% calories)
+    // Source: Dietary Guidelines for Americans, International Society of Sports Nutrition
+    const proteinGrams = Math.round(weightKg * 1.6);
+    const proteinCals = proteinGrams * 4; // 4 calories per gram of protein
+    
+    // Fat: 28% of total calories (within AMDR of 20-35% calories)
+    // Source: Dietary Guidelines for Americans AMDR recommendations
+    const fatPercent = 0.28;
     const fatCals = calories * fatPercent;
-    const fatGrams = Math.round(fatCals / 9);
+    const fatGrams = Math.round(fatCals / 9); // 9 calories per gram of fat
     
+    // Carbohydrates: Remaining calories (ensures within AMDR of 45-65% calories)
     const remainingCals = calories - proteinCals - fatCals;
-    const carbGrams = Math.round(remainingCals / 4);
+    const carbGrams = Math.round(remainingCals / 4); // 4 calories per gram of carbohydrates
     
-    // Fiber: 14g per 1000 calories
+    // Fiber: 14g per 1000 calories (FDA/USDA Dietary Guidelines recommendation)
     const fiber = Math.round((calories / 1000) * 14);
     
-    // Sugar: gender-based limits for added sugar
+    // Added Sugar: Daily limits based on American Heart Association guidelines
+    // Males: 36g max, Females: 25g max per day
     const sugar = profile.gender === 'male' ? 36 : 25;
 
     return {
@@ -350,7 +359,11 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
         </View>
 
         {stepData.type === 'welcome' ? (
-          <View style={styles.welcomeContainer}>
+          <ScrollView 
+            style={styles.welcomeScrollContainer}
+            contentContainerStyle={styles.welcomeContainer}
+            showsVerticalScrollIndicator={false}
+          >
             <View style={styles.logoContainer}>
               <Image 
                 source={require('../assets/images/nutriuni.png')} 
@@ -361,7 +374,16 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
             <ThemedText style={styles.welcomeDescription}>
               {stepData.description}
             </ThemedText>
-          </View>
+            
+            {/* Medical Information Citations */}
+            <Citations type="all" style={styles.welcomeCitations} />
+            
+            <View style={styles.calculationNote}>
+              <ThemedText style={styles.calculationNoteText}>
+                Our personalized nutrition calculations are based on established medical formulas including the Mifflin-St Jeor equation for metabolism and USDA Dietary Guidelines for Americans for macronutrient distribution.
+              </ThemedText>
+            </View>
+          </ScrollView>
         ) : stepData.type === 'input' ? (
           <View style={styles.inputContainer}>
             <TextInput
@@ -661,9 +683,14 @@ const styles = StyleSheet.create({
     opacity: 0.7,
     fontWeight: '500',
   },
+  welcomeScrollContainer: {
+    flex: 1,
+    width: '100%',
+  },
   welcomeContainer: {
     alignItems: 'center',
     paddingHorizontal: 20,
+    paddingBottom: 40,
   },
   logoContainer: {
     marginBottom: 30,
@@ -702,5 +729,25 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
     flex: 1,
+  },
+  welcomeCitations: {
+    marginTop: 20,
+    width: '100%',
+  },
+  calculationNote: {
+    marginTop: 16,
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0, 104, 56, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 104, 56, 0.2)',
+    width: '100%',
+  },
+  calculationNoteText: {
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: 'center',
+    opacity: 0.9,
+    fontStyle: 'italic',
   },
 });

@@ -1,3 +1,4 @@
+import { Citations } from '@/components/Citations';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { MenuItem } from '@/services/MenuDatabase';
@@ -209,6 +210,9 @@ export function NutritionModal({ visible, menuItem, onClose, restaurantName }: N
             </ThemedText>
           </ThemedView>
 
+          {/* Medical Information Citations */}
+          <Citations type="all" style={styles.citations} />
+
           {/* Add to Daily Intake Button */}
           {restaurantName && (
             <TouchableOpacity
@@ -418,5 +422,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  citations: {
+    marginTop: 16,
+    marginBottom: 8,
   },
 });

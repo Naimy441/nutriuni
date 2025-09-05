@@ -1,3 +1,4 @@
+import { Citations } from '@/components/Citations';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -104,7 +105,11 @@ export function EditGoalsModal({ visible, currentGoals, onClose, onSave }: EditG
         </View>
 
         {/* Content */}
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView 
+          style={styles.content} 
+          contentContainerStyle={styles.contentContainer}
+          showsVerticalScrollIndicator={false}
+        >
           <ThemedText style={styles.subtitle}>
             Adjust your daily nutrition targets
           </ThemedText>
@@ -140,6 +145,9 @@ export function EditGoalsModal({ visible, currentGoals, onClose, onSave }: EditG
               💡 These goals are calculated based on your profile from onboarding. You can adjust them to better fit your personal needs.
             </ThemedText>
           </View>
+
+          {/* Medical Information Citations */}
+          <Citations type="all" style={styles.citations} />
         </ScrollView>
       </ThemedView>
     </Modal>
@@ -189,6 +197,9 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 20,
   },
+  contentContainer: {
+    paddingBottom: 50, // Extra padding at bottom for scrolling
+  },
   subtitle: {
     fontSize: 16,
     opacity: 0.7,
@@ -233,5 +244,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     opacity: 0.8,
     lineHeight: 20,
+  },
+  citations: {
+    marginTop: 20,
   },
 });

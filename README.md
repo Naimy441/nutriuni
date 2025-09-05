@@ -1,5 +1,8 @@
 # Welcome to your Expo app 👋
 
+Useful Regex to remove bad food item data from Duke dining
+"calories":\s*"(?:[3-9]\d{3}|[1-9]\d{4}|[12]\d{5}|300000)",
+
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
 ## Get started

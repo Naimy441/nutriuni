@@ -1,3 +1,4 @@
+import { Citations } from '@/components/Citations';
 import { EditGoalsModal } from '@/components/EditGoalsModal';
 import { NutritionCard } from '@/components/NutritionCard';
 import { ThemedText } from '@/components/ThemedText';
@@ -138,9 +139,18 @@ export default function HomeScreen() {
 
         {/* Daily Summary */}
         <ThemedView style={styles.summaryContainer}>
-          <ThemedText type="subtitle" style={styles.sectionTitle}>
-            Daily Progress
-          </ThemedText>
+          <View style={styles.sectionHeader}>
+            <ThemedText type="subtitle" style={styles.sectionTitle}>
+              Daily Progress
+            </ThemedText>
+            <TouchableOpacity 
+              onPress={() => setShowEditGoalsModal(true)}
+              style={styles.editGoalsButton}
+            >
+              <Ionicons name="settings-outline" size={16} color={Colors.primary} />
+              <ThemedText style={styles.editGoalsButtonText}>Edit Goals</ThemedText>
+            </TouchableOpacity>
+          </View>
           
           {/* Main Calories Card */}
           <View style={styles.caloriesContainer}>
@@ -257,18 +267,10 @@ export default function HomeScreen() {
               )}
             </ThemedView>
           )}
-        </ThemedView>
 
-        {/* Edit Goals Button - Bottom of content */}
-        <View style={styles.bottomButtonContainer}>
-          <TouchableOpacity 
-            onPress={() => setShowEditGoalsModal(true)}
-            style={styles.editGoalsButton}
-          >
-            <Ionicons name="settings-outline" size={14} color={Colors.primary} />
-            <ThemedText style={styles.editGoalsButtonText}>Edit Goals</ThemedText>
-          </TouchableOpacity>
-        </View>
+          {/* Medical Information Citations */}
+          <Citations type="all" style={styles.citations} />
+        </ThemedView>
       </ScrollView>
 
       {/* Edit Goals Modal */}
@@ -304,7 +306,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    paddingBottom: 20,
+    paddingBottom: 100, // Increased from 20 to ensure content is fully scrollable
   },
   header: {
     padding: 20,
@@ -322,30 +324,31 @@ const styles = StyleSheet.create({
   summaryContainer: {
     padding: 20,
   },
-  sectionTitle: {
-    marginBottom: 20,
-    textAlign: 'center',
-    fontSize: 18,
-  },
-  bottomButtonContainer: {
-    paddingHorizontal: 20,
-    paddingVertical: 20,
-    paddingBottom: 60,
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    flex: 1,
   },
   editGoalsButton: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 104, 56, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 104, 56, 0.2)',
   },
   editGoalsButtonText: {
-    fontSize: 14,
+    fontSize: 12,
     color: Colors.primary,
     marginLeft: 4,
-    fontWeight: '400',
-    opacity: 0.6,
+    fontWeight: '500',
   },
   caloriesContainer: {
     alignItems: 'center',
@@ -436,5 +439,8 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  citations: {
+    marginTop: 20,
   },
 });
