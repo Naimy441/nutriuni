@@ -3,6 +3,20 @@
 Useful Regex to remove bad food item data from Duke dining
 "calories":\s*"(?:[3-9]\d{3}|[1-9]\d{4}|[12]\d{5}|300000)",
 
+Change versionCode in package.json 
+
+To build on android,
+cd android && ./gradlew clean (optional)
+Change versionCode and versionName android/app/build.gradle
+cd android && ./gradlew app:bundleRelease
+
+To build on ios,
+xed ios
+Change versionCode and versionName in ios/nutriuni/Info.plist and on Xcode
+From the menu bar, open Product > Build
+From the menu bar, open Product > Archive
+Validate then Distribute
+
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
 ## Get started
