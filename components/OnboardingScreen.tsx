@@ -2,8 +2,8 @@ import { Citations } from '@/components/Citations';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { useState } from 'react';
-import { Alert, Animated, Dimensions, Image, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { Alert, Animated, Dimensions, Image, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
 import { ThemedText } from './ThemedText';
 import { ThemedView } from './ThemedView';
 
@@ -42,6 +42,9 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   const [weight, setWeight] = useState('');
   const [heightFeet, setHeightFeet] = useState('');
   const [heightInches, setHeightInches] = useState('');
+  
+  // Refs for height inputs
+  const inchesInputRef = useRef<TextInput>(null);
   
   // Animation values
   const fadeAnim = useState(new Animated.Value(1))[0];
@@ -401,6 +404,9 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
               autoFocus
               selectionColor={Colors.primary}
               cursorColor={Colors.primary}
+              returnKeyType="next"
+              onSubmitEditing={validateAndNext}
+              blurOnSubmit={false}
             />
           </View>
         ) : stepData.type === 'height' ? (
@@ -415,18 +421,32 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
                     borderColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
                   }]}
                   value={stepData.feetValue}
-                  onChangeText={stepData.setFeetValue}
+                  onChangeText={(text) => {
+                    stepData.setFeetValue(text);
+                    // Auto-focus inches input when a valid number is entered
+                    if (text && !isNaN(Number(text)) && text.length >= 1) {
+                      setTimeout(() => {
+                        inchesInputRef.current?.focus();
+                      }, 100);
+                    }
+                  }}
                   placeholder="e.g. 5"
                   placeholderTextColor={colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.5)'}
                   keyboardType="numeric"
                   autoFocus
                   selectionColor={Colors.primary}
                   cursorColor={Colors.primary}
+                  returnKeyType="next"
+                  onSubmitEditing={() => {
+                    inchesInputRef.current?.focus();
+                  }}
+                  blurOnSubmit={false}
                 />
                 <ThemedText style={styles.heightLabel}>feet</ThemedText>
               </View>
               <View style={styles.heightInputGroup}>
                 <TextInput
+                  ref={inchesInputRef}
                   style={[styles.heightInput, { 
                     backgroundColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
                     color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
@@ -440,6 +460,9 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
                   keyboardType="numeric"
                   selectionColor={Colors.primary}
                   cursorColor={Colors.primary}
+                  returnKeyType="next"
+                  onSubmitEditing={validateAndNext}
+                  blurOnSubmit={false}
                 />
                 <ThemedText style={styles.heightLabel}>inches</ThemedText>
               </View>
@@ -491,40 +514,48 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   };
 
   return (
-    <ThemedView style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.progressBarContainer}>
-          <View style={styles.progressBarBackground}>
-            <Animated.View 
-              style={[
-                styles.progressBarFill,
-                {
-                  width: `${((currentStep + 1) / 7) * 100}%`,
-                }
-              ]}
-            />
+    <KeyboardAvoidingView 
+      style={styles.container} 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <ThemedView style={styles.container}>
+          <View style={styles.header}>
+            <View style={styles.progressBarContainer}>
+              <View style={styles.progressBarBackground}>
+                <Animated.View 
+                  style={[
+                    styles.progressBarFill,
+                    {
+                      width: `${((currentStep + 1) / 7) * 100}%`,
+                    }
+                  ]}
+                />
+              </View>
+              <ThemedText style={styles.stepCounter}>
+                {currentStep + 1} of 7
+              </ThemedText>
+            </View>
           </View>
-          <ThemedText style={styles.stepCounter}>
-            {currentStep + 1} of 7
-          </ThemedText>
-        </View>
-      </View>
 
-      <View style={styles.mainContent}>
-        {renderContent()}
-      </View>
+          <View style={styles.mainContent}>
+            {renderContent()}
+          </View>
 
-      <View style={styles.buttonContainer}>
-        <TouchableOpacity 
-          style={styles.nextButton} 
-          onPress={validateAndNext}
-        >
-          <ThemedText style={styles.nextButtonText}>
-            {currentStep === 6 ? 'Complete Setup' : currentStep === 0 ? 'Get Started' : 'Continue'}
-          </ThemedText>
-        </TouchableOpacity>
-      </View>
-    </ThemedView>
+          <View style={styles.buttonContainer}>
+            <TouchableOpacity 
+              style={styles.nextButton} 
+              onPress={validateAndNext}
+            >
+              <ThemedText style={styles.nextButtonText}>
+                {currentStep === 6 ? 'Complete Setup' : currentStep === 0 ? 'Get Started' : 'Continue'}
+              </ThemedText>
+            </TouchableOpacity>
+          </View>
+        </ThemedView>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }
 

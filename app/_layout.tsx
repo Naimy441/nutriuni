@@ -12,7 +12,7 @@ import { OnboardingScreen } from '@/components/OnboardingScreen';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
 // Debug flag - set to false for production
-const DEBUG_MODE = false;
+const DEBUG_MODE = true;
 
 // Debug function to clear all storage on app load
 const clearAllStorageForDebug = async () => {

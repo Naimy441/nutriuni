@@ -5,6 +5,7 @@ import { EvilIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { FastAccessSection } from './FastAccessSection';
 import { ThemedText } from './ThemedText';
 import { ThemedView } from './ThemedView';
 
@@ -96,7 +97,7 @@ export function RestaurantExplorer() {
                 color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
               }
             ]}
-            placeholder="Search"
+            placeholder="Search restaurant name..."
             placeholderTextColor={colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.6)' : 'rgba(60, 60, 67, 0.6)'}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -124,6 +125,16 @@ export function RestaurantExplorer() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* Fast Access Section - only show when not searching */}
+        {!searchQuery.trim() && <FastAccessSection />}
+        
+        {/* Restaurants Section */}
+        {!searchQuery.trim() && (
+          <View style={styles.restaurantsHeader}>
+            <ThemedText style={styles.restaurantsTitle}>All Restaurants</ThemedText>
+          </View>
+        )}
+        
         {filteredRestaurants.length > 0 ? (
           filteredRestaurants.map(renderRestaurant)
         ) : (
@@ -258,5 +269,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     opacity: 0.7,
     fontSize: 16,
+  },
+  restaurantsHeader: {
+    paddingHorizontal: 4,
+    paddingVertical: 12,
+  },
+  restaurantsTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.primary,
   },
 });

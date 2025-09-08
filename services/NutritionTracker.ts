@@ -1,6 +1,7 @@
 // Nutrition Tracking Service - Track daily intake
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useState } from 'react';
+import { fastAccessService } from './FastAccessService';
 import { MenuItem } from './MenuDatabase';
 
 export interface DailyNutrition {
@@ -165,6 +166,56 @@ class NutritionTrackerService {
         JSON.stringify(todaysLog)
       );
       this.dailyLog = todaysLog;
+      
+      // Add to fast access for quick re-adding
+      await fastAccessService.addOrUpdateFastAccessItem(trackedItem);
+    } catch (error) {
+      console.error('Error saving daily log:', error);
+      throw error;
+    }
+  }
+
+  async addCustomMeal(customMeal: {
+    name: string;
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+    fiber: number;
+    sugar: number;
+    sodium: number;
+    serving_size: string;
+  }): Promise<void> {
+    const todaysLog = await this.loadTodaysLog();
+    
+    const trackedItem: TrackedItem = {
+      id: this.generateItemId(),
+      name: customMeal.name,
+      restaurant: 'Custom Meal',
+      calories: customMeal.calories,
+      protein: customMeal.protein,
+      carbs: customMeal.carbs,
+      fat: customMeal.fat,
+      fiber: customMeal.fiber,
+      sugar: customMeal.sugar,
+      sodium: customMeal.sodium,
+      serving_size: customMeal.serving_size,
+      timestamp: Date.now(),
+    };
+    
+    todaysLog.items.push(trackedItem);
+    todaysLog.totals = this.calculateTotals(todaysLog.items);
+    
+    // Save to storage
+    try {
+      await AsyncStorage.setItem(
+        `nutrition_log_${this.currentDate}`,
+        JSON.stringify(todaysLog)
+      );
+      this.dailyLog = todaysLog;
+      
+      // Add to fast access for quick re-adding
+      await fastAccessService.addOrUpdateFastAccessItem(trackedItem);
     } catch (error) {
       console.error('Error saving daily log:', error);
       throw error;
@@ -265,6 +316,26 @@ export function useNutritionTracker() {
     }
   };
 
+  const addCustomMeal = async (customMeal: {
+    name: string;
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+    fiber: number;
+    sugar: number;
+    sodium: number;
+    serving_size: string;
+  }) => {
+    try {
+      await nutritionTracker.addCustomMeal(customMeal);
+      await loadData(); // Refresh data
+    } catch (error) {
+      console.error('Error adding custom meal:', error);
+      throw error;
+    }
+  };
+
   const removeItem = async (itemId: string) => {
     try {
       await nutritionTracker.removeItem(itemId);
@@ -295,6 +366,7 @@ export function useNutritionTracker() {
     todaysItems,
     isLoading,
     addItem,
+    addCustomMeal,
     removeItem,
     clearAll,
     refresh: loadData,

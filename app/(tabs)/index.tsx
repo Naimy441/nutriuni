@@ -1,3 +1,4 @@
+import { AddCustomMealModal, CustomMealData } from '@/components/AddCustomMealModal';
 import { Citations } from '@/components/Citations';
 import { EditGoalsModal } from '@/components/EditGoalsModal';
 import { NutritionCard } from '@/components/NutritionCard';
@@ -22,9 +23,10 @@ interface NutritionGoals {
 }
 
 export default function HomeScreen() {
-  const { dailyNutrition, todaysItems, isLoading, removeItem, clearAll, refresh } = useNutritionTracker();
+  const { dailyNutrition, todaysItems, isLoading, removeItem, clearAll, refresh, addCustomMeal } = useNutritionTracker();
   const [showItemsList, setShowItemsList] = useState(false);
   const [showEditGoalsModal, setShowEditGoalsModal] = useState(false);
+  const [showAddCustomMealModal, setShowAddCustomMealModal] = useState(false);
   const [selectedTrackedItem, setSelectedTrackedItem] = useState<TrackedItem | null>(null);
   const [showTrackedItemModal, setShowTrackedItemModal] = useState(false);
   const [nutritionGoals, setNutritionGoals] = useState<NutritionGoals>({
@@ -108,6 +110,14 @@ export default function HomeScreen() {
     setShowTrackedItemModal(true);
   };
 
+  const handleAddCustomMeal = async (mealData: CustomMealData) => {
+    try {
+      await addCustomMeal(mealData);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to add custom meal. Please try again.');
+    }
+  };
+
   // Show loading while loading goals
   if (isLoadingGoals) {
     return (
@@ -143,13 +153,6 @@ export default function HomeScreen() {
             <ThemedText type="subtitle" style={styles.sectionTitle}>
               Daily Progress
             </ThemedText>
-            <TouchableOpacity 
-              onPress={() => setShowEditGoalsModal(true)}
-              style={styles.editGoalsButton}
-            >
-              <Ionicons name="settings-outline" size={16} color={Colors.primary} />
-              <ThemedText style={styles.editGoalsButtonText}>Edit Goals</ThemedText>
-            </TouchableOpacity>
           </View>
           
           {/* Main Calories Card */}
@@ -268,6 +271,24 @@ export default function HomeScreen() {
             </ThemedView>
           )}
 
+          {/* Action Buttons */}
+          <View style={styles.actionButtonsContainer}>
+          <TouchableOpacity 
+              style={styles.addCustomMealButton}
+              onPress={() => setShowAddCustomMealModal(true)}
+            >
+              <Ionicons name="add-circle-outline" size={16} color={Colors.primary} />
+              <ThemedText style={styles.addCustomMealText}>Add Custom Meal</ThemedText>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              onPress={() => setShowEditGoalsModal(true)}
+              style={styles.editGoalsButton}
+            >
+              <Ionicons name="settings-outline" size={16} color={Colors.primary} />
+              <ThemedText style={styles.editGoalsButtonText}>Edit Goals</ThemedText>
+            </TouchableOpacity>
+          </View>
+
           {/* Medical Information Citations */}
           <Citations type="all" style={styles.citations} />
         </ThemedView>
@@ -282,6 +303,13 @@ export default function HomeScreen() {
           setNutritionGoals(newGoals);
           setShowEditGoalsModal(false);
         }}
+      />
+
+      {/* Add Custom Meal Modal */}
+      <AddCustomMealModal
+        visible={showAddCustomMealModal}
+        onClose={() => setShowAddCustomMealModal(false)}
+        onSave={handleAddCustomMeal}
       />
 
       {/* Tracked Item Modal */}
@@ -325,14 +353,12 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 20,
   },
   sectionTitle: {
     fontSize: 18,
-    flex: 1,
+    textAlign: 'center',
   },
   editGoalsButton: {
     flexDirection: 'row',
@@ -340,9 +366,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
-    backgroundColor: 'rgba(0, 104, 56, 0.1)',
+    backgroundColor: 'rgba(0, 104, 56, 0.05)',
     borderWidth: 1,
-    borderColor: 'rgba(0, 104, 56, 0.2)',
+    borderColor: 'rgba(0, 104, 56, 0.1)',
   },
   editGoalsButtonText: {
     fontSize: 12,
@@ -439,6 +465,29 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  actionButtonsContainer: {
+    marginTop: 14,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+  },
+  addCustomMealButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 104, 56, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 104, 56, 0.1)',
+  },
+  addCustomMealText: {
+    fontSize: 12,
+    color: Colors.primary,
+    marginLeft: 4,
+    fontWeight: '500',
   },
   citations: {
     marginTop: 20,
