@@ -142,9 +142,8 @@ export function Citations({ type, style }: CitationsProps) {
                 style={styles.sourceLink}
               >
                 <ThemedText style={styles.source}>
-                  Source: {citation.source}
+                  Source: {citation.source} <Ionicons name="open-outline" size={12} color={Colors.primary} />
                 </ThemedText>
-                <Ionicons name="open-outline" size={12} color={Colors.primary} />
               </TouchableOpacity>
             </View>
           ))}
@@ -214,15 +213,14 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
   sourceLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+    alignSelf: 'flex-start',
   },
   source: {
     fontSize: 11,
     fontStyle: 'italic',
     color: Colors.primary,
     textDecorationLine: 'underline',
+    lineHeight: 16,
   },
   generalDisclaimer: {
     marginTop: 8,

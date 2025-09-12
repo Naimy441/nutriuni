@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, TouchableOpacity } from 'react-native';
 import { CircularProgress } from './CircularProgress';
 import { ThemedText } from './ThemedText';
 import { ThemedView } from './ThemedView';
@@ -11,6 +11,7 @@ interface NutritionCardProps {
   unit: string;
   color: string;
   size?: number;
+  onPress?: () => void;
 }
 
 export function NutritionCard({
@@ -20,12 +21,13 @@ export function NutritionCard({
   unit,
   color,
   size = 100,
+  onPress,
 }: NutritionCardProps) {
   const progress = Math.min(current / target, 1); // Still cap visual progress at 100%
   const percentage = Math.round((current / target) * 100); // But show actual percentage
 
-  return (
-    <ThemedView style={styles.container}>
+  const content = (
+    <>
       <CircularProgress
         size={size}
         strokeWidth={8}
@@ -39,6 +41,20 @@ export function NutritionCard({
       </CircularProgress>
       <ThemedText style={styles.title}>{title}</ThemedText>
       <ThemedText style={styles.unit}>{unit}</ThemedText>
+    </>
+  );
+
+  if (onPress) {
+    return (
+      <TouchableOpacity onPress={onPress} style={styles.container}>
+        {content}
+      </TouchableOpacity>
+    );
+  }
+
+  return (
+    <ThemedView style={styles.container}>
+      {content}
     </ThemedView>
   );
 }

@@ -3,6 +3,7 @@ import { AllFoodHistoryModal } from '@/components/AllFoodHistoryModal';
 import { Citations } from '@/components/Citations';
 import { EditGoalsModal } from '@/components/EditGoalsModal';
 import { FoodHistorySection } from '@/components/FoodHistorySection';
+import { NutritionBreakdownModal } from '@/components/NutritionBreakdownModal';
 import { NutritionCard } from '@/components/NutritionCard';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -13,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Alert, Linking, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 interface NutritionGoals {
   calories: number;
   protein: number;
@@ -43,6 +44,8 @@ export default function HomeScreen() {
   const [selectedTrackedItem, setSelectedTrackedItem] = useState<TrackedItem | null>(null);
   const [showTrackedItemModal, setShowTrackedItemModal] = useState(false);
   const [currentDate, setCurrentDate] = useState(getCurrentDate());
+  const [showNutritionBreakdown, setShowNutritionBreakdown] = useState(false);
+  const [selectedNutritionType, setSelectedNutritionType] = useState<'calories' | 'protein' | 'carbs' | 'fat' | 'fiber' | 'sugar'>('calories');
   const [nutritionGoals, setNutritionGoals] = useState<NutritionGoals>({
     calories: 2000,
     protein: 120,
@@ -163,6 +166,23 @@ export default function HomeScreen() {
     }
   };
 
+  const handleNutritionCardPress = (nutritionType: 'calories' | 'protein' | 'carbs' | 'fat' | 'fiber' | 'sugar') => {
+    setSelectedNutritionType(nutritionType);
+    setShowNutritionBreakdown(true);
+  };
+
+  const handleFeedbackPress = async () => {
+    const feedbackUrl = 'https://docs.google.com/forms/d/e/1FAIpQLSd8wtBFaxivHiQ8seqSm7Ya8AMbqx3J2T6Py-U74hPZdvMzJw/viewform?usp=sharing&ouid=114705869524362385356';
+    try {
+      const supported = await Linking.canOpenURL(feedbackUrl);
+      if (supported) {
+        await Linking.openURL(feedbackUrl);
+      }
+    } catch (error) {
+      console.error('Error opening feedback form:', error);
+    }
+  };
+
 
   // Show loading while loading goals
   if (isLoadingGoals) {
@@ -210,6 +230,7 @@ export default function HomeScreen() {
               unit="kcal"
               color={Colors.primary}
               size={140}
+              onPress={() => handleNutritionCardPress('calories')}
             />
           </View>
 
@@ -225,6 +246,7 @@ export default function HomeScreen() {
               unit="g"
               color="#E74C3C"
               size={100}
+              onPress={() => handleNutritionCardPress('protein')}
             />
             <NutritionCard
               title="Carbs"
@@ -233,6 +255,7 @@ export default function HomeScreen() {
               unit="g"
               color="#3498DB"
               size={100}
+              onPress={() => handleNutritionCardPress('carbs')}
             />
             <NutritionCard
               title="Fat"
@@ -241,6 +264,7 @@ export default function HomeScreen() {
               unit="g"
               color="#F39C12"
               size={100}
+              onPress={() => handleNutritionCardPress('fat')}
             />
           </View>
 
@@ -256,6 +280,7 @@ export default function HomeScreen() {
               unit="g"
               color="#9B59B6"
               size={90}
+              onPress={() => handleNutritionCardPress('fiber')}
             />
             <NutritionCard
               title="Sugar"
@@ -264,6 +289,7 @@ export default function HomeScreen() {
               unit="g"
               color="#E91E63"
               size={90}
+              onPress={() => handleNutritionCardPress('sugar')}
             />
           </View>
 
@@ -342,6 +368,15 @@ export default function HomeScreen() {
 
           {/* Medical Information Citations */}
           <Citations type="all" style={styles.citations} />
+
+          {/* Feedback Link */}
+          <TouchableOpacity onPress={handleFeedbackPress} style={styles.feedbackContainer}>
+            <Ionicons name="chatbubble-outline" size={14} color={Colors.primary} />
+            <ThemedText style={styles.feedbackText}>
+              Feature request or bug report? Click here
+            </ThemedText>
+            <Ionicons name="open-outline" size={12} color={Colors.primary} />
+          </TouchableOpacity>
         </ThemedView>
       </ScrollView>
 
@@ -373,14 +408,24 @@ export default function HomeScreen() {
         }}
       />
 
-      {/* All Food History Modal */}
-      <AllFoodHistoryModal
-        visible={showAllHistoryModal}
-        onClose={() => setShowAllHistoryModal(false)}
-      />
-    </ThemedView>
-  );
-}
+        {/* All Food History Modal */}
+        <AllFoodHistoryModal
+          visible={showAllHistoryModal}
+          onClose={() => setShowAllHistoryModal(false)}
+        />
+
+        {/* Nutrition Breakdown Modal */}
+        <NutritionBreakdownModal
+          visible={showNutritionBreakdown}
+          onClose={() => setShowNutritionBreakdown(false)}
+          nutritionType={selectedNutritionType}
+          todaysItems={todaysItems}
+          total={dailyNutrition[selectedNutritionType]}
+          unit={selectedNutritionType === 'calories' ? 'kcal' : 'g'}
+        />
+      </ThemedView>
+    );
+  }
 
 const styles = StyleSheet.create({
   container: {
@@ -548,5 +593,23 @@ const styles = StyleSheet.create({
   },
   citations: {
     marginTop: 20,
+  },
+  feedbackContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0, 104, 56, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 104, 56, 0.1)',
+    gap: 8,
+  },
+  feedbackText: {
+    fontSize: 12,
+    color: Colors.primary,
+    fontWeight: '500',
   },
 });
