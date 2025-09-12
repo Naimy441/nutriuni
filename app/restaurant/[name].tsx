@@ -2,27 +2,31 @@ import { NutritionModal } from '@/components/NutritionModal';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { Colors } from '@/constants/Colors';
+import { useColorScheme } from '@/hooks/useColorScheme';
 import { menuDatabase, MenuItem, Restaurant } from '@/services/MenuDatabase';
 import { useNutritionTracker } from '@/services/NutritionTracker';
-import { Ionicons } from '@expo/vector-icons';
+import { EvilIcons, Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Animated, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 
 export default function RestaurantPage() {
   const { name } = useLocalSearchParams<{ name: string }>();
   const router = useRouter();
+  const colorScheme = useColorScheme();
   const { addItem, removeItem, todaysItems } = useNutritionTracker();
   
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [preSearchExpandedCategories, setPreSearchExpandedCategories] = useState<Set<string> | null>(null);
   const [selectedMenuItem, setSelectedMenuItem] = useState<MenuItem | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [addingItems, setAddingItems] = useState<Set<string>>(new Set());
   const [undoItem, setUndoItem] = useState<{menuItem: MenuItem, restaurantName: string, timestamp: number} | null>(null);
   const [showUndo, setShowUndo] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const undoOpacity = useRef(new Animated.Value(0)).current;
   const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -69,6 +73,60 @@ export default function RestaurantPage() {
     }
     setExpandedCategories(newExpanded);
   };
+
+  // Filter categories and items based on search query
+  const getFilteredCategories = () => {
+    if (!restaurant) return [];
+    
+    if (!searchQuery.trim()) {
+      return restaurant.categories;
+    }
+
+    const query = searchQuery.toLowerCase().trim();
+    const filteredCategories = [];
+
+    for (const category of restaurant.categories) {
+      // Filter meals in this category that match the search
+      const matchingMeals = category.meals.filter(meal =>
+        meal.name.toLowerCase().includes(query) ||
+        (meal.description && meal.description.toLowerCase().includes(query))
+      );
+
+      // If category has matching meals, include it
+      if (matchingMeals.length > 0) {
+        filteredCategories.push({
+          ...category,
+          meals: matchingMeals
+        });
+      }
+    }
+
+    return filteredCategories;
+  };
+
+  // Auto-expand categories that have search matches and restore state when clearing
+  useEffect(() => {
+    if (!restaurant) return;
+
+    if (searchQuery.trim()) {
+      // Save current expanded state before searching (only on first search)
+      if (preSearchExpandedCategories === null) {
+        setPreSearchExpandedCategories(new Set(expandedCategories));
+      }
+      
+      // Auto-expand categories with matches
+      const filteredCategories = getFilteredCategories();
+      const categoriesToExpand = new Set(filteredCategories.map(cat => cat.name));
+      setExpandedCategories(categoriesToExpand);
+    } else {
+      // Restore previous expanded state when clearing search (if we have saved state)
+      if (preSearchExpandedCategories !== null) {
+        setExpandedCategories(new Set(preSearchExpandedCategories));
+        setPreSearchExpandedCategories(null); // Clear the saved state
+      }
+      // If no saved state, keep current expanded state (don't change anything)
+    }
+  }, [searchQuery, restaurant]);
 
   const handleMenuItemPress = (menuItem: MenuItem) => {
     setSelectedMenuItem(menuItem);
@@ -290,10 +348,64 @@ export default function RestaurantPage() {
         </View>
       </ThemedView>
 
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <View style={styles.searchInputContainer}>
+          <View style={styles.searchIconContainer}>
+            <EvilIcons 
+              name="search" 
+              size={20} 
+              color={colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.6)' : 'rgba(60, 60, 67, 0.6)'} 
+            />
+          </View>
+          <TextInput
+            style={[
+              styles.searchInput,
+              {
+                backgroundColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(118, 118, 128, 0.12)',
+                color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
+              }
+            ]}
+            placeholder="Search food items..."
+            placeholderTextColor={colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.6)' : 'rgba(60, 60, 67, 0.6)'}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            returnKeyType="search"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity 
+              style={styles.clearButton}
+              onPress={() => setSearchQuery('')}
+            >
+              <EvilIcons 
+                name="close" 
+                size={20} 
+                color={colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.6)' : 'rgba(60, 60, 67, 0.6)'} 
+              />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
       {/* Categories */}
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         <View style={styles.categoriesContainer}>
-          {restaurant.categories.map(renderCategory)}
+          {getFilteredCategories().length > 0 ? (
+            getFilteredCategories().map(renderCategory)
+          ) : searchQuery.trim() ? (
+            <View style={styles.noResultsContainer}>
+              <ThemedText style={styles.noResultsText}>
+                No food items found matching "{searchQuery}"
+              </ThemedText>
+              <ThemedText style={styles.noResultsSubtext}>
+                Try a different search term or browse all categories
+              </ThemedText>
+            </View>
+          ) : (
+            restaurant.categories.map(renderCategory)
+          )}
         </View>
       </ScrollView>
 
@@ -369,11 +481,69 @@ const styles = StyleSheet.create({
     opacity: 0.6,
     textAlign: 'center',
   },
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  searchInputContainer: {
+    position: 'relative',
+    height: 36,
+  },
+  searchIconContainer: {
+    position: 'absolute',
+    left: 10,
+    top: 0,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  searchInput: {
+    height: 36,
+    borderRadius: 10,
+    paddingLeft: 34,
+    paddingRight: 34,
+    paddingVertical: 0,
+    fontSize: 16,
+    fontWeight: '400',
+    flex: 1,
+    textAlignVertical: 'center',
+    includeFontPadding: false,
+  },
+  clearButton: {
+    position: 'absolute',
+    right: 10,
+    top: 0,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+  },
   scrollView: {
     flex: 1,
   },
   categoriesContainer: {
     padding: 16,
+  },
+  noResultsContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  noResultsText: {
+    fontSize: 18,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 8,
+    opacity: 0.8,
+  },
+  noResultsSubtext: {
+    fontSize: 14,
+    textAlign: 'center',
+    opacity: 0.6,
+    lineHeight: 20,
   },
   categoryCard: {
     marginBottom: 12,

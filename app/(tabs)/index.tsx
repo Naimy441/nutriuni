@@ -105,11 +105,28 @@ export default function HomeScreen() {
   };
 
   const handleRemoveItem = async (itemId: string) => {
-    try {
-      await removeItem(itemId);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to remove item. Please try again.');
-    }
+    // Find the item to get its name for the confirmation dialog
+    const item = todaysItems.find(i => i.id === itemId);
+    const itemName = item?.name || 'this item';
+    
+    Alert.alert(
+      'Remove Item',
+      `Are you sure you want to remove "${itemName}" from today's log?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Remove', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await removeItem(itemId);
+            } catch (error) {
+              Alert.alert('Error', 'Failed to remove item. Please try again.');
+            }
+          }
+        },
+      ]
+    );
   };
 
   const handleClearAll = () => {
