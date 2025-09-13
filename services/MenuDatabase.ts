@@ -116,7 +116,6 @@ class MenuDatabaseService {
       const indexData = require('../assets/restaurants/index.json') as RestaurantIndex;
       this.restaurantIndex = indexData;
       
-      console.log(`Loaded index for ${indexData.total_restaurants} restaurants`);
       return this.convertIndexToRestaurantInfo(indexData);
     } catch (error) {
       console.error('Failed to load restaurant index:', error);
@@ -216,7 +215,6 @@ class MenuDatabaseService {
       // Convert to simplified food items for easier searching
       this.buildRestaurantFoodIndex(restaurant);
       
-      console.log(`Loaded restaurant: ${restaurantName} with ${restaurant.categories.length} categories`);
       return restaurant;
     } catch (error) {
       console.error(`Failed to load restaurant file: ${restaurantInfo.filename}`, error);

@@ -422,7 +422,7 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
                   }]}
                   value={stepData.feetValue}
                   onChangeText={(text) => {
-                    stepData.setFeetValue(text);
+                    stepData.setFeetValue?.(text);
                     // Auto-focus inches input when a valid number is entered
                     if (text && !isNaN(Number(text)) && text.length >= 1) {
                       setTimeout(() => {

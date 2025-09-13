@@ -1,18 +1,19 @@
 import { AddCustomMealModal, CustomMealData } from '@/components/AddCustomMealModal';
+import { AllFoodHistoryModal } from '@/components/AllFoodHistoryModal';
 import { Citations } from '@/components/Citations';
 import { EditGoalsModal } from '@/components/EditGoalsModal';
+import { FoodHistorySection } from '@/components/FoodHistorySection';
 import { NutritionCard } from '@/components/NutritionCard';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { TrackedItemModal } from '@/components/TrackedItemModal';
 import { Colors } from '@/constants/Colors';
-import { TrackedItem, useNutritionTracker } from '@/services/NutritionTracker';
+import { nutritionTracker, TrackedItem, useNutritionTracker } from '@/services/NutritionTracker';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
-
 interface NutritionGoals {
   calories: number;
   protein: number;
@@ -22,13 +23,26 @@ interface NutritionGoals {
   sugar: number;
 }
 
+// Get current date string
+const getCurrentDate = () => {
+  const today = new Date();
+  return today.toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+};
+
 export default function HomeScreen() {
   const { dailyNutrition, todaysItems, isLoading, removeItem, clearAll, refresh, addCustomMeal } = useNutritionTracker();
   const [showItemsList, setShowItemsList] = useState(false);
   const [showEditGoalsModal, setShowEditGoalsModal] = useState(false);
   const [showAddCustomMealModal, setShowAddCustomMealModal] = useState(false);
+  const [showAllHistoryModal, setShowAllHistoryModal] = useState(false);
   const [selectedTrackedItem, setSelectedTrackedItem] = useState<TrackedItem | null>(null);
   const [showTrackedItemModal, setShowTrackedItemModal] = useState(false);
+  const [currentDate, setCurrentDate] = useState(getCurrentDate());
   const [nutritionGoals, setNutritionGoals] = useState<NutritionGoals>({
     calories: 2000,
     protein: 120,
@@ -44,10 +58,35 @@ export default function HomeScreen() {
     loadNutritionGoals();
   }, []);
 
+  // Monitor for date changes to update the display
+  useEffect(() => {
+    const updateDate = () => {
+      setCurrentDate(getCurrentDate());
+    };
+
+    // Subscribe to date changes from the nutrition tracker
+    const unsubscribe = nutritionTracker.onDateChange(() => {
+      updateDate();
+    });
+
+    return unsubscribe;
+  }, []);
+
   // Refresh nutrition data when screen comes into focus
   useFocusEffect(
     useCallback(() => {
-      refresh();
+      const checkAndRefresh = async () => {
+        // Check for date changes first when app comes into focus
+        const dateChanged = await nutritionTracker.forceCheckDateChange();
+        if (dateChanged) {
+          setCurrentDate(getCurrentDate());
+        }
+        
+        // Then refresh nutrition data
+        refresh();
+      };
+      
+      checkAndRefresh();
     }, [refresh])
   );
 
@@ -63,17 +102,6 @@ export default function HomeScreen() {
     } finally {
       setIsLoadingGoals(false);
     }
-  };
-
-  // Get current date string
-  const getCurrentDate = () => {
-    const today = new Date();
-    return today.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
   };
 
   const handleRemoveItem = async (itemId: string) => {
@@ -118,6 +146,7 @@ export default function HomeScreen() {
     }
   };
 
+
   // Show loading while loading goals
   if (isLoadingGoals) {
     return (
@@ -144,7 +173,7 @@ export default function HomeScreen() {
           <ThemedText type="title" style={styles.title}>
             nutriuni
           </ThemedText>
-          <ThemedText style={styles.date}>{getCurrentDate()}</ThemedText>
+          <ThemedText style={styles.date}>{currentDate}</ThemedText>
         </ThemedView>
 
         {/* Daily Summary */}
@@ -289,6 +318,11 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* Food History Section */}
+          <FoodHistorySection 
+            onViewAllHistory={() => setShowAllHistoryModal(true)}
+          />
+
           {/* Medical Information Citations */}
           <Citations type="all" style={styles.citations} />
         </ThemedView>
@@ -320,6 +354,12 @@ export default function HomeScreen() {
           setShowTrackedItemModal(false);
           setSelectedTrackedItem(null);
         }}
+      />
+
+      {/* All Food History Modal */}
+      <AllFoodHistoryModal
+        visible={showAllHistoryModal}
+        onClose={() => setShowAllHistoryModal(false)}
       />
     </ThemedView>
   );
