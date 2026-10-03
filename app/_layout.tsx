@@ -1,113 +1,92 @@
+import { OnboardingScreen } from '@/components/OnboardingScreen';
+import { ToastProvider } from '@/components/ui/Toast';
+import { Theme, useTheme } from '@/constants/theme';
+import { goalsStore, useGoals } from '@/services/goals';
+import { menuDatabase } from '@/services/MenuDatabase';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import * as SystemUI from 'expo-system-ui';
+import { useEffect, useMemo } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 
-import { OnboardingScreen } from '@/components/OnboardingScreen';
-import { menuDatabase } from '@/services/MenuDatabase';
-import { useColorScheme } from '@/hooks/useColorScheme';
+// Keep the splash up until we know whether to show onboarding, so the first
+// frame is the right screen instead of a flash of the wrong one.
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
-// Debug flag - set to false for production
-const DEBUG_MODE = false;
-
-// Debug function to clear all storage on app load
-const clearAllStorageForDebug = async () => {
-  if (!DEBUG_MODE) {
-    return;
-  }
-  
-  try {
-    console.log('🧹 Debug: Clearing all storage...');
-    
-    // Get all keys to see what we're clearing
-    const allKeys = await AsyncStorage.getAllKeys();
-    console.log('📋 Keys found:', allKeys);
-    
-    // Clear all keys
-    await AsyncStorage.clear();
-    
-    console.log('✅ Debug: All storage cleared successfully');
-  } catch (error) {
-    console.error('❌ Error clearing storage:', error);
-  }
-};
-
-interface NutritionGoals {
-  calories: number;
-  protein: number;
-  carbs: number;
-  fat: number;
-  fiber: number;
-  sugar: number;
+function navigationTheme(theme: Theme) {
+  const base = theme.scheme === 'dark' ? DarkTheme : DefaultTheme;
+  return {
+    ...base,
+    colors: {
+      ...base.colors,
+      primary: theme.brand,
+      background: theme.background,
+      card: theme.background,
+      text: theme.text,
+      border: theme.separator,
+      notification: theme.danger,
+    },
+  };
 }
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-  const [loaded] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-  });
-  const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null);
+  const theme = useTheme();
+  const { loaded, onboarded } = useGoals();
+  const navTheme = useMemo(() => navigationTheme(theme), [theme]);
 
   // Load cached menus and check Firestore for newer ones in the background.
   useEffect(() => {
     menuDatabase.start();
+    goalsStore.load();
   }, []);
 
   useEffect(() => {
-    if (loaded) {
-      // Clear storage for debugging purposes
-      clearAllStorageForDebug().then(() => {
-        checkOnboardingStatus();
-      });
-    }
+    if (loaded) SplashScreen.hideAsync().catch(() => {});
   }, [loaded]);
 
-  const checkOnboardingStatus = async () => {
-    try {
-      const onboardingComplete = await AsyncStorage.getItem('onboarding_complete');
-      setShowOnboarding(onboardingComplete !== 'true');
-    } catch (error) {
-      console.error('Error checking onboarding status:', error);
-      setShowOnboarding(true);
-    }
+  // The window behind screens shows during modal and keyboard transitions.
+  useEffect(() => {
+    SystemUI.setBackgroundColorAsync(theme.background).catch(() => {});
+  }, [theme.background]);
+
+  if (!loaded) return null;
+
+  const headerOptions = {
+    headerShown: true,
+    headerBackTitle: 'Back',
+    headerShadowVisible: false,
+    headerTintColor: theme.brandText,
+    headerStyle: { backgroundColor: theme.background },
+    headerTitleStyle: { color: theme.text, fontWeight: '700' as const },
   };
-
-  const handleOnboardingComplete = (goals: NutritionGoals) => {
-    setShowOnboarding(false);
-  };
-
-  if (!loaded || showOnboarding === null) {
-    return null;
-  }
-
-  if (showOnboarding) {
-    return (
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          <OnboardingScreen onComplete={handleOnboardingComplete} />
-          <StatusBar style="auto" />
-        </ThemeProvider>
-      </GestureHandlerRootView>
-    );
-  }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <BottomSheetModalProvider>
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          <Stack>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="restaurant/[name]" options={{ headerShown: false }} />
-            <Stack.Screen name="+not-found" />
-          </Stack>
-          <StatusBar style="auto" />
-        </ThemeProvider>
-      </BottomSheetModalProvider>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.background }}>
+      <ThemeProvider value={navTheme}>
+        <BottomSheetModalProvider>
+          <ToastProvider>
+            {onboarded ? (
+              <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.background } }}>
+                <Stack.Screen name="(tabs)" />
+                <Stack.Screen name="restaurant/[name]" />
+                <Stack.Screen name="day/[date]" options={{ ...headerOptions, title: '' }} />
+                <Stack.Screen name="log" options={{ presentation: 'modal' }} />
+                <Stack.Screen name="goals" options={{ ...headerOptions, title: 'Daily targets' }} />
+                <Stack.Screen name="profile-edit" options={{ ...headerOptions, title: 'Your details' }} />
+                <Stack.Screen name="sources" options={{ ...headerOptions, title: 'Sources & methods' }} />
+                <Stack.Screen name="+not-found" options={{ ...headerOptions, title: 'Not found' }} />
+              </Stack>
+            ) : (
+              <OnboardingScreen />
+            )}
+          </ToastProvider>
+        </BottomSheetModalProvider>
+      </ThemeProvider>
+      <StatusBar style={theme.scheme === 'dark' ? 'light' : 'dark'} />
     </GestureHandlerRootView>
   );
 }

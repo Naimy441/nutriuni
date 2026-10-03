@@ -5,14 +5,15 @@ interface AnimatedNumberProps extends Omit<AppTextProps, 'children'> {
   value: number;
   duration?: number;
   format?: (value: number) => string;
+  from?: number; // count up from here on first render
 }
 
 const defaultFormat = (n: number) => Math.round(n).toLocaleString();
 
 // Counts smoothly from the previous value to the new one.
-export function AnimatedNumber({ value, duration = 700, format = defaultFormat, ...rest }: AnimatedNumberProps) {
-  const [display, setDisplay] = useState(value);
-  const from = useRef(value);
+export function AnimatedNumber({ value, duration = 700, format = defaultFormat, from: initial, ...rest }: AnimatedNumberProps) {
+  const [display, setDisplay] = useState(initial ?? value);
+  const from = useRef(initial ?? value);
   const frame = useRef<number | null>(null);
   useEffect(() => {
     const start = from.current;

@@ -1,15 +1,40 @@
 # Nutriuni production redesign — plan & status
 
-Paused mid-way (usage limit). **The app does not currently compile**: the data
-services were rewritten with new APIs and these old callers still use the old ones:
+**Status: every screen is rebuilt (steps 1–9 done; step 10 done except on-device testing).** The app
+compiles and lints clean, and a scripted click-through of the web build passes in light
+and dark mode (onboarding → log from search, quick add and a restaurant → move, delete,
+undo → every tab and settings screen). Still to do: on-device QA (step 10) and
+App Store screenshots (step 11).
 
-- `app/(tabs)/index.tsx` (uses `useNutritionTracker`, `addCustomMeal`, old modals)
-- `services/FoodHistoryService.ts` (uses removed `getMostRecentLogs`, `formatDateForDisplay`, …)
-- `components/FastAccessSection.tsx` (uses `fastAccessItemToTrackedItem`, old hook shape)
-- `components/MenuItemSheet.tsx` (uses `useNutritionTracker().addItem`)
+### Built in this pass
+- Shell: `app/_layout.tsx` (splash held until goals load, nav theme from `useTheme()`,
+  providers, onboarding gate from `goalsStore.onboarded`), `components/ui/TabBar.tsx`
+  (blur bar, centre + opens `/log`, `useTabBarSpace()` for bottom padding).
+- Today: `components/DayView.tsx` (ring + macros + fiber/sugar/sodium, "Eat it again",
+  meal sections with swipe-to-delete), `WeekStrip`, `TrackedItemSheet` (move meal, log
+  again, delete with Undo), `NutrientSheet` (item-by-item breakdown). Past days:
+  `app/day/[date].tsx`.
+- Log (`app/log.tsx`, native modal with its own sheet host + toasts): meal picker, search
+  across your foods/restaurants/dishes, tabs Recent / My meals / Dining (browse a
+  restaurant inline) / Quick add, running meal total footer.
+- `MenuItemSheet` rewritten on the ui kit, logs to `date`/`meal`, shows its own Undo toast.
+  Shared rows in `components/DiningRows.tsx`; hooks `useRestaurants`, `useQuickAdd`.
+- Dining tab + restaurant page restyled. Progress (chart, streak, averages, macro split,
+  history). Profile (plan card, details, targets, menu refresh, sources, feedback, erase
+  all data). `app/goals.tsx`, `app/profile-edit.tsx` (shared `ProfileFields`),
+  `app/sources.tsx` (citations moved to `constants/sources.ts`).
+- Onboarding: welcome + value props (or skip with 2,000 cal default) → goal → sex → body
+  → activity → animated plan reveal.
+- Store fixes: mutations re-read the latest day after `loadDay()` (a quick double log
+  could drop an item); `clearAll()`/`reset()` for erase; `remember` option and
+  `saveCustomMeal`; `sourceLabel()` shows "My meal".
+- Removed: the old Home/Explorer components, modals, Themed* components, template icons,
+  `constants/Colors.ts`, SpaceMono font.
 
-Check with `npx tsc --noEmit -p .`. Fastest way back to green: finish step 3 below
-(those files are all being replaced/deleted anyway).
+### Web smoke test (how the click-through above was run)
+Temporarily add `"web"` to `platforms` and set `web.output` to `"single"` in app.json,
+then `EXPO_OFFLINE=1 CI=1 npx expo export --platform web --output-dir dist`, serve `dist`
+with `serve -s dist`, and drive it with Playwright at 390×844. Revert app.json afterwards.
 
 ## Done so far
 
@@ -62,7 +87,7 @@ Check with `npx tsc --noEmit -p .`. Fastest way back to green: finish step 3 bel
   welling.ai/articles/which-features-in-calorie-tracking-apps-actually-matter,
   apptweak.com/en/aso-blog/how-to-optimize-your-app-screenshots.
 
-## Remaining work (in order)
+## Original step list (1–9 done)
 
 1. **Root shell** `app/_layout.tsx`: `SplashScreen.preventAutoHideAsync()` until
    onboarding flag + `goalsStore.load()` resolve; drop SpaceMono `useFonts`; providers

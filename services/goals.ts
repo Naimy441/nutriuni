@@ -83,14 +83,17 @@ export function calculateGoals(profile: UserProfile): NutritionGoals {
   };
 }
 
+const ONBOARDING_KEY = 'onboarding_complete';
+
 interface GoalsState {
   loaded: boolean;
+  onboarded: boolean;
   goals: NutritionGoals;
   profile: UserProfile | null;
 }
 
 class GoalsStore {
-  private state: GoalsState = { loaded: false, goals: DEFAULT_GOALS, profile: null };
+  private state: GoalsState = { loaded: false, onboarded: false, goals: DEFAULT_GOALS, profile: null };
   private loading: Promise<void> | null = null;
   private listeners = new Set<() => void>();
 
@@ -110,11 +113,11 @@ class GoalsStore {
 
   load(): Promise<void> {
     if (!this.loading) {
-      this.loading = AsyncStorage.multiGet(['nutrition_goals', 'user_profile'])
-        .then(([[, goalsText], [, profileText]]) => {
+      this.loading = AsyncStorage.multiGet(['nutrition_goals', 'user_profile', ONBOARDING_KEY])
+        .then(([[, goalsText], [, profileText], [, onboardedText]]) => {
           const goals = goalsText ? { ...DEFAULT_GOALS, ...JSON.parse(goalsText) } : DEFAULT_GOALS;
           const profile = profileText ? (JSON.parse(profileText) as UserProfile) : null;
-          this.set({ loaded: true, goals, profile });
+          this.set({ loaded: true, onboarded: onboardedText === 'true', goals, profile });
         })
         .catch(() => this.set({ loaded: true }));
     }
@@ -135,6 +138,24 @@ class GoalsStore {
       ['nutrition_goals', JSON.stringify(goals)],
     ]);
     return goals;
+  }
+
+  async completeOnboarding(profile: UserProfile): Promise<void> {
+    await this.saveProfile(profile);
+    await AsyncStorage.setItem(ONBOARDING_KEY, 'true');
+    this.set({ onboarded: true });
+  }
+
+  // Starts with the default targets; details can be added later in Profile.
+  async skipOnboarding(): Promise<void> {
+    await AsyncStorage.setItem(ONBOARDING_KEY, 'true');
+    this.set({ onboarded: true });
+  }
+
+  // Forgets the profile and goals and returns to onboarding.
+  async reset(): Promise<void> {
+    await AsyncStorage.multiRemove(['nutrition_goals', 'user_profile', ONBOARDING_KEY]);
+    this.set({ onboarded: false, goals: DEFAULT_GOALS, profile: null });
   }
 }
 

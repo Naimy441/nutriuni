@@ -28,10 +28,11 @@ export function useToast() {
   return useContext(ToastContext);
 }
 
-// Screens with a tab bar lift toasts above it.
+// Screens with a tab bar lift toasts above it; modal screens pass a smaller
+// offset to their own provider.
 const TAB_BAR_CLEARANCE = 92;
 
-export function ToastProvider({ children }: { children: React.ReactNode }) {
+export function ToastProvider({ children, bottomOffset = TAB_BAR_CLEARANCE }: { children: React.ReactNode; bottomOffset?: number }) {
   const [toast, setToast] = useState<(ToastOptions & { key: number }) | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -56,12 +57,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      {toast && <ToastView key={toast.key} toast={toast} onDismiss={hide} />}
+      {toast && <ToastView key={toast.key} toast={toast} onDismiss={hide} bottomOffset={bottomOffset} />}
     </ToastContext.Provider>
   );
 }
 
-function ToastView({ toast, onDismiss }: { toast: ToastOptions; onDismiss: () => void }) {
+function ToastView({ toast, onDismiss, bottomOffset }: { toast: ToastOptions; onDismiss: () => void; bottomOffset: number }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const iconColor = toast.tone === 'error' ? '#FF8A8A' : '#5ED596';
@@ -72,7 +73,7 @@ function ToastView({ toast, onDismiss }: { toast: ToastOptions; onDismiss: () =>
         exiting={FadeOutDown.duration(180)}
         style={[
           styles.toast,
-          { bottom: insets.bottom + TAB_BAR_CLEARANCE, backgroundColor: theme.scheme === 'dark' ? '#26302B' : '#17221C' },
+          { bottom: insets.bottom + bottomOffset, backgroundColor: theme.scheme === 'dark' ? '#26302B' : '#17221C' },
           shadow(theme, 3),
         ]}
         accessibilityLiveRegion="polite"

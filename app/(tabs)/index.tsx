@@ -1,618 +1,73 @@
-import { AddCustomMealModal, CustomMealData } from '@/components/AddCustomMealModal';
-import { AllFoodHistoryModal } from '@/components/AllFoodHistoryModal';
-import { Citations } from '@/components/Citations';
-import { EditGoalsModal } from '@/components/EditGoalsModal';
-import { FoodHistorySection } from '@/components/FoodHistorySection';
-import { NutritionBreakdownModal } from '@/components/NutritionBreakdownModal';
-import { NutritionCard } from '@/components/NutritionCard';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
-import { TrackedItemModal } from '@/components/TrackedItemModal';
-import { Colors } from '@/constants/Colors';
-import { formatTrackedCalories, nutritionTracker, TrackedItem, useNutritionTracker } from '@/services/NutritionTracker';
-import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from '@react-navigation/native';
-import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Linking, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
-interface NutritionGoals {
-  calories: number;
-  protein: number;
-  carbs: number;
-  fat: number;
-  fiber: number;
-  sugar: number;
-}
+import { DayView } from '@/components/DayView';
+import { AppText } from '@/components/ui/AppText';
+import { Chip } from '@/components/ui/Chip';
+import { useTabBarSpace } from '@/components/ui/TabBar';
+import { WeekStrip } from '@/components/WeekStrip';
+import { space, useTheme } from '@/constants/theme';
+import { greeting, longDayLabel, relativeDayLabel } from '@/services/dates';
+import { useLoggedDays, useToday } from '@/services/NutritionTracker';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// Get current date string
-const getCurrentDate = () => {
-  const today = new Date();
-  return today.toLocaleDateString('en-US', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-};
+export default function TodayScreen() {
+  const theme = useTheme();
+  const insets = useSafeAreaInsets();
+  const bottomPadding = useTabBarSpace();
+  const today = useToday();
+  const [selected, setSelected] = useState(today);
+  const loggedDays = useLoggedDays();
+  const logged = useMemo(() => new Set(loggedDays), [loggedDays]);
 
-export default function HomeScreen() {
-  const { dailyNutrition, todaysItems, isLoading, removeItem, clearAll, refresh, addCustomMeal } = useNutritionTracker();
-  const [showItemsList, setShowItemsList] = useState(false);
-  const [showEditGoalsModal, setShowEditGoalsModal] = useState(false);
-  const [showAddCustomMealModal, setShowAddCustomMealModal] = useState(false);
-  const [showAllHistoryModal, setShowAllHistoryModal] = useState(false);
-  const [selectedTrackedItem, setSelectedTrackedItem] = useState<TrackedItem | null>(null);
-  const [showTrackedItemModal, setShowTrackedItemModal] = useState(false);
-  const [currentDate, setCurrentDate] = useState(getCurrentDate());
-  const [showNutritionBreakdown, setShowNutritionBreakdown] = useState(false);
-  const [selectedNutritionType, setSelectedNutritionType] = useState<'calories' | 'protein' | 'carbs' | 'fat' | 'fiber' | 'sugar'>('calories');
-  const [nutritionGoals, setNutritionGoals] = useState<NutritionGoals>({
-    calories: 2000,
-    protein: 120,
-    carbs: 250,
-    fat: 65,
-    fiber: 25,
-    sugar: 50,
-  });
-  const [isLoadingGoals, setIsLoadingGoals] = useState(true);
-
-  // Load nutrition goals on mount
+  // After midnight, follow the new day if the old "today" was showing.
+  const previousToday = useRef(today);
   useEffect(() => {
-    loadNutritionGoals();
-  }, []);
+    if (previousToday.current !== today) {
+      setSelected(current => (current === previousToday.current ? today : current));
+      previousToday.current = today;
+    }
+  }, [today]);
 
-  // Monitor for date changes to update the display
-  useEffect(() => {
-    const updateDate = () => {
-      setCurrentDate(getCurrentDate());
-    };
-
-    // Subscribe to date changes from the nutrition tracker
-    const unsubscribe = nutritionTracker.onDateChange(() => {
-      updateDate();
-    });
-
-    return unsubscribe;
-  }, []);
-
-  // Refresh nutrition data when screen comes into focus
-  useFocusEffect(
-    useCallback(() => {
-      const checkAndRefresh = async () => {
-        // Check for date changes first when app comes into focus
-        const dateChanged = await nutritionTracker.forceCheckDateChange();
-        if (dateChanged) {
-          setCurrentDate(getCurrentDate());
-        }
-        
-        // Then refresh nutrition data
-        refresh();
-      };
-      
-      checkAndRefresh();
-    }, [refresh])
+  const isToday = selected === today;
+  const header = (
+    <View style={styles.header}>
+      <View style={styles.titleRow}>
+        <View style={styles.titleText}>
+          <AppText variant="subhead" tone="secondary" weight="600">
+            {isToday ? greeting() : longDayLabel(selected)}
+          </AppText>
+          <AppText variant="largeTitle" accessibilityRole="header">
+            {isToday ? 'Today' : relativeDayLabel(selected, today)}
+          </AppText>
+        </View>
+        {!isToday && <Chip label="Today" icon="arrow-undo" onPress={() => setSelected(today)} />}
+      </View>
+      <WeekStrip selected={selected} today={today} loggedDays={logged} onSelect={setSelected} />
+    </View>
   );
 
-  const loadNutritionGoals = async () => {
-    try {
-      const savedGoals = await AsyncStorage.getItem('nutrition_goals');
-      if (savedGoals) {
-        const goals = JSON.parse(savedGoals);
-        setNutritionGoals(goals);
-      }
-    } catch (error) {
-      console.error('Error loading nutrition goals:', error);
-    } finally {
-      setIsLoadingGoals(false);
-    }
-  };
-
-  const handleRemoveItem = async (itemId: string) => {
-    // Find the item to get its name for the confirmation dialog
-    const item = todaysItems.find(i => i.id === itemId);
-    const itemName = item?.name || 'this item';
-    
-    Alert.alert(
-      'Remove Item',
-      `Are you sure you want to remove "${itemName}" from today's log?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Remove', 
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await removeItem(itemId);
-            } catch (error) {
-              Alert.alert('Error', 'Failed to remove item. Please try again.');
-            }
-          }
-        },
-      ]
-    );
-  };
-
-  const handleClearAll = () => {
-    Alert.alert(
-      'Clear All Items',
-      'Are you sure you want to clear all items from today\'s log? This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Clear All', 
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await clearAll();
-            } catch (error) {
-              Alert.alert('Error', 'Failed to clear items. Please try again.');
-            }
-          }
-        },
-      ]
-    );
-  };
-
-  const handleItemPress = (item: TrackedItem) => {
-    setSelectedTrackedItem(item);
-    setShowTrackedItemModal(true);
-  };
-
-  const handleAddCustomMeal = async (mealData: CustomMealData) => {
-    try {
-      await addCustomMeal(mealData);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to add custom meal. Please try again.');
-    }
-  };
-
-  const handleNutritionCardPress = (nutritionType: 'calories' | 'protein' | 'carbs' | 'fat' | 'fiber' | 'sugar') => {
-    setSelectedNutritionType(nutritionType);
-    setShowNutritionBreakdown(true);
-  };
-
-  const handleFeedbackPress = async () => {
-    const feedbackUrl = 'https://docs.google.com/forms/d/e/1FAIpQLSd8wtBFaxivHiQ8seqSm7Ya8AMbqx3J2T6Py-U74hPZdvMzJw/viewform?usp=sharing&ouid=114705869524362385356';
-    try {
-      const supported = await Linking.canOpenURL(feedbackUrl);
-      if (supported) {
-        await Linking.openURL(feedbackUrl);
-      }
-    } catch (error) {
-      console.error('Error opening feedback form:', error);
-    }
-  };
-
-
-  // Show loading while loading goals
-  if (isLoadingGoals) {
-    return (
-      <ThemedView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ThemedText>Loading your nutrition goals...</ThemedText>
-        </View>
-      </ThemedView>
-    );
-  }
-
   return (
-    <ThemedView style={styles.container}>
-      <ScrollView 
-        style={styles.scrollView} 
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        bounces={false}
-        scrollEventThrottle={16}
-        contentInsetAdjustmentBehavior="never"
-      >
-        {/* Header */}
-        <ThemedView style={styles.header}>
-          <ThemedText type="title" style={styles.title}>
-            nutriuni
-          </ThemedText>
-          <ThemedText style={styles.date}>{currentDate}</ThemedText>
-        </ThemedView>
-
-        {/* Daily Summary */}
-        <ThemedView style={styles.summaryContainer}>
-          <View style={styles.sectionHeader}>
-            <ThemedText type="subtitle" style={styles.sectionTitle}>
-              Daily Progress
-            </ThemedText>
-          </View>
-          
-          {/* Main Calories Card */}
-          <View style={styles.caloriesContainer}>
-            <NutritionCard
-              title="Calories"
-              current={dailyNutrition.calories}
-              target={nutritionGoals.calories}
-              unit="kcal"
-              color={Colors.primary}
-              size={140}
-              onPress={() => handleNutritionCardPress('calories')}
-            />
-          </View>
-
-          {/* Macros Grid */}
-          <ThemedText type="defaultSemiBold" style={styles.macrosTitle}>
-            Macronutrients
-          </ThemedText>
-          <View style={styles.macrosGrid}>
-            <NutritionCard
-              title="Protein"
-              current={dailyNutrition.protein}
-              target={nutritionGoals.protein}
-              unit="g"
-              color="#E74C3C"
-              size={100}
-              onPress={() => handleNutritionCardPress('protein')}
-            />
-            <NutritionCard
-              title="Carbs"
-              current={dailyNutrition.carbs}
-              target={nutritionGoals.carbs}
-              unit="g"
-              color="#3498DB"
-              size={100}
-              onPress={() => handleNutritionCardPress('carbs')}
-            />
-            <NutritionCard
-              title="Fat"
-              current={dailyNutrition.fat}
-              target={nutritionGoals.fat}
-              unit="g"
-              color="#F39C12"
-              size={100}
-              onPress={() => handleNutritionCardPress('fat')}
-            />
-          </View>
-
-          {/* Additional Nutrients */}
-          <ThemedText type="defaultSemiBold" style={styles.macrosTitle}>
-            Other Nutrients
-          </ThemedText>
-          <View style={styles.macrosGrid}>
-            <NutritionCard
-              title="Fiber"
-              current={dailyNutrition.fiber}
-              target={nutritionGoals.fiber}
-              unit="g"
-              color="#9B59B6"
-              size={90}
-              onPress={() => handleNutritionCardPress('fiber')}
-            />
-            <NutritionCard
-              title="Sugar"
-              current={dailyNutrition.sugar}
-              target={nutritionGoals.sugar}
-              unit="g"
-              color="#E91E63"
-              size={90}
-              onPress={() => handleNutritionCardPress('sugar')}
-            />
-          </View>
-
-          {/* Today's Items */}
-          {todaysItems.length > 0 && (
-            <ThemedView style={styles.itemsSection}>
-              <View style={styles.itemsHeader}>
-                <ThemedText type="defaultSemiBold" style={styles.itemsTitle}>
-                  Today's Items ({todaysItems.length})
-                </ThemedText>
-                <View style={styles.itemsActions}>
-                  <TouchableOpacity 
-                    onPress={() => setShowItemsList(!showItemsList)}
-                    style={styles.toggleButton}
-                  >
-                    <Ionicons 
-                      name={showItemsList ? "chevron-up" : "chevron-down"} 
-                      size={20} 
-                      color={Colors.primary} 
-                    />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={handleClearAll} style={styles.clearButton}>
-                    <Ionicons name="trash-outline" size={18} color={Colors.primary} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {showItemsList && (
-                <View style={styles.itemsList}>
-                  {todaysItems.map((item) => (
-                    <View key={item.id} style={styles.itemRow}>
-                      <TouchableOpacity 
-                        style={styles.itemInfo}
-                        onPress={() => handleItemPress(item)}
-                      >
-                        <ThemedText style={styles.itemName}>{item.name}</ThemedText>
-                        {item.details ? (
-                          <ThemedText style={styles.itemDetails} numberOfLines={1}>{item.details}</ThemedText>
-                        ) : null}
-                        <ThemedText style={styles.itemDetails}>
-                          {item.restaurant} • {formatTrackedCalories(item)} • {item.serving_size}
-                        </ThemedText>
-                      </TouchableOpacity>
-                      <TouchableOpacity 
-                        onPress={() => handleRemoveItem(item.id)}
-                        style={styles.removeButton}
-                      >
-                        <Ionicons name="close" size={16} color={Colors.primary} />
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                </View>
-              )}
-            </ThemedView>
-          )}
-
-          {/* Action Buttons */}
-          <View style={styles.actionButtonsContainer}>
-          <TouchableOpacity 
-              style={styles.addCustomMealButton}
-              onPress={() => setShowAddCustomMealModal(true)}
-            >
-              <Ionicons name="add-circle-outline" size={16} color={Colors.primary} />
-              <ThemedText style={styles.addCustomMealText}>Add Custom Meal</ThemedText>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              onPress={() => setShowEditGoalsModal(true)}
-              style={styles.editGoalsButton}
-            >
-              <Ionicons name="settings-outline" size={16} color={Colors.primary} />
-              <ThemedText style={styles.editGoalsButtonText}>Edit Goals</ThemedText>
-            </TouchableOpacity>
-          </View>
-
-          {/* Food History Section */}
-          <FoodHistorySection 
-            onViewAllHistory={() => setShowAllHistoryModal(true)}
-          />
-
-          {/* Medical Information Citations */}
-          <Citations type="all" style={styles.citations} />
-
-          {/* Feedback Link */}
-          <TouchableOpacity onPress={handleFeedbackPress} style={styles.feedbackContainer}>
-            <Ionicons name="chatbubble-outline" size={14} color={Colors.primary} />
-            <ThemedText style={styles.feedbackText}>
-              Feature request or bug report? Click here
-            </ThemedText>
-            <Ionicons name="open-outline" size={12} color={Colors.primary} />
-          </TouchableOpacity>
-        </ThemedView>
-      </ScrollView>
-
-      {/* Edit Goals Modal */}
-      <EditGoalsModal
-        visible={showEditGoalsModal}
-        currentGoals={nutritionGoals}
-        onClose={() => setShowEditGoalsModal(false)}
-        onSave={(newGoals) => {
-          setNutritionGoals(newGoals);
-          setShowEditGoalsModal(false);
-        }}
-      />
-
-      {/* Add Custom Meal Modal */}
-      <AddCustomMealModal
-        visible={showAddCustomMealModal}
-        onClose={() => setShowAddCustomMealModal(false)}
-        onSave={handleAddCustomMeal}
-      />
-
-      {/* Tracked Item Modal */}
-      <TrackedItemModal
-        visible={showTrackedItemModal}
-        trackedItem={selectedTrackedItem}
-        onClose={() => {
-          setShowTrackedItemModal(false);
-          setSelectedTrackedItem(null);
-        }}
-      />
-
-        {/* All Food History Modal */}
-        <AllFoodHistoryModal
-          visible={showAllHistoryModal}
-          onClose={() => setShowAllHistoryModal(false)}
-        />
-
-        {/* Nutrition Breakdown Modal */}
-        <NutritionBreakdownModal
-          visible={showNutritionBreakdown}
-          onClose={() => setShowNutritionBreakdown(false)}
-          nutritionType={selectedNutritionType}
-          todaysItems={todaysItems}
-          total={dailyNutrition[selectedNutritionType]}
-          unit={selectedNutritionType === 'calories' ? 'kcal' : 'g'}
-        />
-      </ThemedView>
-    );
-  }
+    <View style={[styles.container, { backgroundColor: theme.background, paddingTop: insets.top }]}>
+      <DayView date={selected} today={today} header={header} bottomPadding={bottomPadding} />
+    </View>
+  );
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    paddingBottom: 100, // Increased from 20 to ensure content is fully scrollable
-  },
   header: {
-    padding: 20,
-    paddingTop: 60,
-    alignItems: 'center',
+    gap: space.lg,
+    paddingTop: space.md,
   },
-  title: {
-    marginBottom: 8,
-    color: Colors.primary,
-  },
-  date: {
-    fontSize: 16,
-    opacity: 0.7,
-  },
-  summaryContainer: {
-    padding: 20,
-  },
-  sectionHeader: {
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    textAlign: 'center',
-  },
-  editGoalsButton: {
+  titleRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0, 104, 56, 0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(0, 104, 56, 0.1)',
-  },
-  editGoalsButtonText: {
-    fontSize: 12,
-    color: Colors.primary,
-    marginLeft: 4,
-    fontWeight: '500',
-  },
-  caloriesContainer: {
-    alignItems: 'center',
-    marginBottom: 30,
-  },
-  macrosTitle: {
-    marginBottom: 16,
-    marginTop: 8,
-    textAlign: 'center',
-    fontSize: 18,
-  },
-  macrosGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    flexWrap: 'wrap',
-    marginBottom: 20,
-  },
-  quickStats: {
-    marginTop: 20,
-    padding: 16,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-  },
-  quickStatsTitle: {
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  statsRow: {
-    marginVertical: 4,
-  },
-  statText: {
-    textAlign: 'center',
-    opacity: 0.8,
-  },
-  itemsSection: {
-    marginTop: 20,
-    padding: 16,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-  },
-  itemsHeader: {
-    flexDirection: 'row',
+    alignItems: 'flex-end',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
+    paddingHorizontal: space.xs,
   },
-  itemsTitle: {
-    fontSize: 16,
-  },
-  itemsActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  toggleButton: {
-    padding: 4,
-  },
-  clearButton: {
-    padding: 4,
-  },
-  itemsList: {
-    gap: 8,
-  },
-  itemRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-  },
-  itemInfo: {
+  titleText: {
     flex: 1,
-  },
-  itemName: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  itemDetails: {
-    fontSize: 12,
-    opacity: 0.7,
-  },
-  removeButton: {
-    padding: 4,
-    marginLeft: 8,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  actionButtonsContainer: {
-    marginTop: 14,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 12,
-  },
-  addCustomMealButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0, 104, 56, 0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(0, 104, 56, 0.1)',
-  },
-  addCustomMealText: {
-    fontSize: 12,
-    color: Colors.primary,
-    marginLeft: 4,
-    fontWeight: '500',
-  },
-  citations: {
-    marginTop: 20,
-  },
-  feedbackContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    backgroundColor: 'rgba(0, 104, 56, 0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(0, 104, 56, 0.1)',
-    gap: 8,
-  },
-  feedbackText: {
-    fontSize: 12,
-    color: Colors.primary,
-    fontWeight: '500',
   },
 });

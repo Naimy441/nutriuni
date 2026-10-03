@@ -1,32 +1,20 @@
-import { Link, Stack } from 'expo-router';
-import { StyleSheet } from 'react-native';
-
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { useTheme } from '@/constants/theme';
+import { useRouter } from 'expo-router';
+import { View } from 'react-native';
 
 export default function NotFoundScreen() {
+  const theme = useTheme();
+  const router = useRouter();
   return (
-    <>
-      <Stack.Screen options={{ title: 'Oops!' }} />
-      <ThemedView style={styles.container}>
-        <ThemedText type="title">This screen does not exist.</ThemedText>
-        <Link href="/" style={styles.link}>
-          <ThemedText type="link">Go to home screen!</ThemedText>
-        </Link>
-      </ThemedView>
-    </>
+    <View style={{ flex: 1, justifyContent: 'center', backgroundColor: theme.background }}>
+      <EmptyState
+        icon="compass-outline"
+        title="Page not found"
+        message="This link doesn't go anywhere in nutriuni."
+        actionLabel="Go to Today"
+        onAction={() => router.replace('/')}
+      />
+    </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  link: {
-    marginTop: 15,
-    paddingVertical: 15,
-  },
-});

@@ -27,6 +27,11 @@ const STORAGE_KEY = 'fast_access_items';
 const MAX_ITEMS = 30;
 export const CUSTOM_MEAL_RESTAURANT = 'Custom Meal';
 
+// Where a logged food came from, for display ("My meal" for the user's own).
+export function sourceLabel(restaurant: string): string {
+  return restaurant === CUSTOM_MEAL_RESTAURANT ? 'My meal' : restaurant;
+}
+
 const sameFood = (a: Pick<FastAccessItem, 'name' | 'restaurant' | 'details'>, b: typeof a) =>
   a.name === b.name && a.restaurant === b.restaurant && (a.details ?? '') === (b.details ?? '');
 
@@ -125,10 +130,27 @@ class FastAccessService {
     await this.persist();
   }
 
+  // Adds a meal to "My meals" without logging it.
+  async saveCustomMeal(entry: NewTrackedItem): Promise<void> {
+    await this.addOrUpdateFastAccessItem({
+      ...entry,
+      restaurant: CUSTOM_MEAL_RESTAURANT,
+      id: `${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
+      timestamp: Date.now(),
+    });
+  }
+
   async removeFastAccessItem(itemId: string): Promise<void> {
     await this.load();
     this.items = this.items.filter(item => item.id !== itemId);
     await this.persist();
+  }
+
+  async clearAll(): Promise<void> {
+    this.items = [];
+    this.loaded = true;
+    await AsyncStorage.removeItem(STORAGE_KEY);
+    this.emit();
   }
 
   // The fields needed to log this food again.
