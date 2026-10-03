@@ -83,6 +83,7 @@ export default function DiningScreen() {
                         <DishRow
                           key={`${result.restaurant.id}/${result.item.id}`}
                           item={result.item}
+                          menu={menu}
                           subtitle={`${result.restaurant.name} · ${result.section}`}
                           preview={describePreview(menu, result.item)}
                           onPress={() => setSheet({ menu, item: result.item })}

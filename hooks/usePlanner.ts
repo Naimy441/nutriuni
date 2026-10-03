@@ -4,7 +4,8 @@ import { useToast } from '@/components/ui/Toast';
 import { addDays, weekOf } from '@/services/dates';
 import { FastAccessItem, fastAccessService, useFastAccess } from '@/services/FastAccessService';
 import { useGoals } from '@/services/goals';
-import { MealType, mealLabel } from '@/services/meals';
+import { currentMealLabel, useMealSlots, usePreferences } from '@/services/preferences';
+import { MealType } from '@/services/meals';
 import { menuDatabase, useClock, useMenuRevision } from '@/services/MenuDatabase';
 import { quickLogEntry } from '@/services/menuLogging';
 import type { MenuItem, RestaurantMenu } from '@/services/menuTypes';
@@ -78,13 +79,17 @@ export function useMealPlan(date: string): { day: DayPlan; meals: MealTarget[]; 
   const now = useClock();
   const week = useWeekPlan(date);
   const [log] = useDayLogs([date]);
-  const shares = useMealShares();
+  const learned = useMealShares();
+  const { schedule } = usePreferences();
+  const slots = useMealSlots(date);
   const day = dayOf(week, date)!;
   const meals = planMeals({
     day,
     log: toLoggedDay(log),
     nowMinutes: date === today ? nowMinutes(now) : null,
-    shares,
+    slots,
+    // Learned meal sizes describe a three-meal day; other schedules use their own.
+    shares: schedule.kind === 'standard' ? learned : undefined,
   });
   return { day, meals, week };
 }
@@ -107,6 +112,7 @@ export function useSuggestions(date: string, target: MealTarget | undefined, lim
   const now = useClock();
   const revision = useMenuRevision();
   const { all } = useFastAccess();
+  const { food, schedule } = usePreferences();
   const minute = date === today ? nowMinutes(now) : null;
   // Re-plan each quarter hour, not every minute.
   const bucket = minute === null ? null : Math.floor(minute / 15) * 15;
@@ -115,18 +121,23 @@ export function useSuggestions(date: string, target: MealTarget | undefined, lim
     if (!target || target.state !== 'planned') return [];
     const menu = menuPool(revision);
     const pool = [...menu, ...buildSavedPool(all, menu)];
-    return recommend({
+    // Almost nothing is open before dawn, so suhoor planned ahead is picked
+    // up the evening before.
+    const pickUpEarly = schedule.kind === 'ramadan' && target.meal === 'breakfast' && bucket === null;
+    const results = recommend({
       pool,
       meal: target.meal,
       calories: target.calories,
       protein: target.protein,
-      date,
-      window: mealWindow(target.meal, bucket),
+      date: pickUpEarly ? addDays(date, -1) : date,
+      window: pickUpEarly ? { from: 19 * 60, to: 24 * 60 } : mealWindow(target.window, bucket),
       familiar: familiarityMap(all),
       limit,
+      prefs: food,
     });
+    return pickUpEarly ? results.map(result => ({ ...result, tags: [...result.tags, 'pick-up-early' as const] })) : results;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, target?.meal, target?.state, target?.calories, target?.protein, bucket, revision, savedSignature, limit]);
+  }, [date, target?.meal, target?.state, target?.calories, target?.protein, target?.window.start, target?.window.end, bucket, revision, savedSignature, limit, food, schedule.kind]);
 }
 
 function entryFor(part: FoodOption, saved: FastAccessItem[]): NewTrackedItem | null {
@@ -155,7 +166,7 @@ export function useLogSuggestion() {
     const added: TrackedItem[] = [];
     for (const entry of entries) added.push(await nutritionTracker.addTrackedItem(entry!, { date, meal }));
     toast.show({
-      message: `Added ${suggestionTitle(suggestion)} to ${mealLabel(meal)}`,
+      message: `Added ${suggestionTitle(suggestion)} to ${currentMealLabel(meal, date)}`,
       action: { label: 'Undo', onPress: () => added.forEach(item => nutritionTracker.removeItem(item.id, date)) },
     });
   };

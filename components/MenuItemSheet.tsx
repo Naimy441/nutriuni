@@ -2,7 +2,9 @@
 // see its nutrition update live before logging it.
 import { radius, space, useTheme } from '@/constants/theme';
 import { relativeDayLabel } from '@/services/dates';
-import { MealType, mealForTime, mealLabel } from '@/services/meals';
+import { Allergen, allergenLabel, allergenList, dishDietary, DishDietary } from '@/services/dietary';
+import { MealType } from '@/services/meals';
+import { currentMeal, useMealLabel, usePreferences } from '@/services/preferences';
 import { ManualNutrition, trackedEntryFromOrder } from '@/services/menuLogging';
 import {
   computeNutrition, defaultSelection, groupMax, hasNutritionSource, isSingleChoice, NutrientKey,
@@ -18,7 +20,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MealPicker } from './MealPicker';
+import { MealPicker, useMealOptions } from './MealPicker';
 import { AnimatedNumber } from './ui/AnimatedNumber';
 import { AppText } from './ui/AppText';
 import { Button } from './ui/Button';
@@ -95,7 +97,7 @@ export function MenuItemSheet({ menu, item, onClose, onLogged, date, meal: initi
 
   const [selection, setSelection] = useState<Selection>([]);
   const [servings, setServings] = useState(1);
-  const [meal, setMeal] = useState<MealType>(initialMeal ?? mealForTime());
+  const [meal, setMeal] = useState<MealType>(initialMeal ?? currentMeal());
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [manualMode, setManualMode] = useState(false);
   const [manual, setManual] = useState(EMPTY_MANUAL);
@@ -105,7 +107,7 @@ export function MenuItemSheet({ menu, item, onClose, onLogged, date, meal: initi
     if (item && menu) {
       setSelection(defaultSelection(item));
       setServings(1);
-      setMeal(initialMeal ?? mealForTime());
+      setMeal(initialMeal ?? currentMeal());
       setShowBreakdown(false);
       setManualMode(false);
       setManual(EMPTY_MANUAL);
@@ -122,6 +124,13 @@ export function MenuItemSheet({ menu, item, onClose, onLogged, date, meal: initi
     [menu, item, selection, servings],
   );
   const unmet = useMemo(() => (item ? unmetChoices(item, selection) : []), [item, selection]);
+  const { food } = usePreferences();
+  const dietary = useMemo(
+    () => (item && menu && selection.length === (item.options?.length ?? 0) ? dishDietary(menu, item, selection) : null),
+    [menu, item, selection],
+  );
+  const conflicts = dietary ? dietary.contains.filter(code => food.avoid.includes(code)) : [];
+  const possible = dietary ? dietary.mayContain.filter(code => food.avoid.includes(code)) : [];
 
   const manualValues = useMemo((): ManualNutrition | null => {
     const calories = parseFloat(manual.calories);
@@ -134,6 +143,8 @@ export function MenuItemSheet({ menu, item, onClose, onLogged, date, meal: initi
   }, [manual, manualMode]);
 
   const logDate = date ?? today;
+  const labelOf = useMealLabel(logDate);
+  const mealOptions = useMealOptions(meal, logDate);
 
   const logOrder = async (withoutNutrition = false) => {
     if (!item || !menu || isLogging) return;
@@ -143,7 +154,7 @@ export function MenuItemSheet({ menu, item, onClose, onLogged, date, meal: initi
       const tracked = await nutritionTracker.addTrackedItem(entry, { date: logDate, meal });
       sheetRef.current?.dismiss();
       toast.show({
-        message: `Added ${item.name} to ${mealLabel(meal)}${logDate !== today ? ` · ${relativeDayLabel(logDate, today)}` : ''}`,
+        message: `Added ${item.name} to ${labelOf(meal)}${logDate !== today ? ` · ${relativeDayLabel(logDate, today)}` : ''}`,
         action: { label: 'Undo', onPress: () => nutritionTracker.removeItem(tracked.id, logDate) },
       });
       onLogged?.(tracked);
@@ -167,7 +178,7 @@ export function MenuItemSheet({ menu, item, onClose, onLogged, date, meal: initi
         label = `Choose ${unmet[0].name}`;
         disabled = true;
       } else if (result?.totals) {
-        label = `Add to ${mealLabel(meal)} · ${result.estimated || result.status === 'partial' ? '~' : ''}${result.totals.calories.toLocaleString()} cal`;
+        label = `Add to ${labelOf(meal)} · ${result.estimated || result.status === 'partial' ? '~' : ''}${result.totals.calories.toLocaleString()} cal`;
       } else {
         label = 'Add without nutrition';
         onPress = () => logOrder(true);
@@ -346,6 +357,8 @@ export function MenuItemSheet({ menu, item, onClose, onLogged, date, meal: initi
     const showStepper = selected && group.allow_quantity && groupMax(group) > 1;
     const effect = valueEffect(value, foods, quantity);
     const halal = value.food ? foods[value.food]?.halal : false;
+    const valueConflicts = (value.kind === 'add' && value.food ? foods[value.food]?.contains ?? [] : [])
+      .filter(code => food.avoid.includes(code as Allergen));
     return (
       <Pressable
         key={`${value.name}-${v}`}
@@ -376,6 +389,9 @@ export function MenuItemSheet({ menu, item, onClose, onLogged, date, meal: initi
               {[effect, value.price ? `+$${value.price.toFixed(2)}` : ''].filter(Boolean).join(' · ')}
             </AppText>
           ) : null}
+          {valueConflicts.length > 0 && (
+            <AppText variant="caption" weight="600" tone="danger">Contains {allergenList(valueConflicts)}</AppText>
+          )}
         </View>
         {showStepper && (
           <View style={styles.stepper}>
@@ -428,7 +444,20 @@ export function MenuItemSheet({ menu, item, onClose, onLogged, date, meal: initi
           >
             {item.description ? <AppText variant="subhead" tone="secondary">{item.description}</AppText> : null}
 
+            {(conflicts.length > 0 || possible.length > 0) && (
+              <View style={[styles.warning, { backgroundColor: conflicts.length ? theme.dangerSoft : theme.warningSoft }]}>
+                <Ionicons name="warning" size={18} color={conflicts.length ? theme.danger : theme.warning} />
+                <AppText variant="subhead" weight="600" tone={conflicts.length ? 'danger' : 'warning'} style={styles.flex}>
+                  {conflicts.length
+                    ? `Contains ${allergenList(conflicts)}, which you avoid.`
+                    : `May contain ${allergenList(possible)}, going by its name. Check with staff.`}
+                </AppText>
+              </View>
+            )}
+
             {renderNutrition()}
+
+            {dietary?.known && <DietarySummary dietary={dietary} avoid={food.avoid} />}
 
             {(item.options ?? []).map((group, g) => {
               const missingChoice = selectedCount(selection, g) < group.min;
@@ -453,15 +482,17 @@ export function MenuItemSheet({ menu, item, onClose, onLogged, date, meal: initi
               <Stepper value={servings} onChange={setServings} min={0.5} max={10} step={0.5} label="servings" />
             </View>
 
-            <View style={styles.group}>
-              <View style={styles.groupHeader}>
-                <AppText variant="headline">Add to</AppText>
-                {logDate !== today && (
-                  <AppText variant="footnote" tone="tertiary">{relativeDayLabel(logDate, today)}</AppText>
-                )}
+            {(mealOptions.length > 1 || logDate !== today) && (
+              <View style={styles.group}>
+                <View style={styles.groupHeader}>
+                  <AppText variant="headline">Add to</AppText>
+                  {logDate !== today && (
+                    <AppText variant="footnote" tone="tertiary">{relativeDayLabel(logDate, today)}</AppText>
+                  )}
+                </View>
+                <MealPicker value={meal} onChange={setMeal} date={logDate} />
               </View>
-              <MealPicker value={meal} onChange={setMeal} />
-            </View>
+            )}
 
             {result?.totals && !manualMode && (
               <Pressable style={styles.inlineLink} onPress={() => setManualMode(true)} hitSlop={8} accessibilityRole="button">
@@ -478,6 +509,52 @@ export function MenuItemSheet({ menu, item, onClose, onLogged, date, meal: initi
         </>
       ) : null}
     </Sheet>
+  );
+}
+
+// What the labels say: diet marks and allergens, for the order as built.
+function DietarySummary({ dietary, avoid }: { dietary: DishDietary; avoid: Allergen[] }) {
+  const theme = useTheme();
+  const marks = [dietary.vegan ? 'Vegan' : dietary.vegetarian ? 'Vegetarian' : null, dietary.halalCertified ? 'Halal' : null]
+    .filter(Boolean) as string[];
+  return (
+    <View style={styles.dietary}>
+      {marks.length > 0 && (
+        <View style={styles.marks}>
+          {marks.map(mark => (
+            <View key={mark} style={[styles.markPill, { backgroundColor: theme.brandSoft }]}>
+              <Ionicons name={mark === 'Halal' ? 'checkmark-circle' : 'leaf'} size={13} color={theme.brandText} />
+              <AppText variant="caption" weight="700" tone="brand">{mark}</AppText>
+            </View>
+          ))}
+        </View>
+      )}
+      <AppText variant="footnote" tone="secondary">
+        {!dietary.allergenInfo
+          ? 'This kitchen doesn’t publish allergen info. Ask staff.'
+          : dietary.contains.length
+            ? (
+              <>
+                Contains{' '}
+                {dietary.contains.map((code, index) => (
+                  <AppText
+                    key={code}
+                    variant="footnote"
+                    weight={avoid.includes(code) ? '700' : '400'}
+                    color={avoid.includes(code) ? theme.danger : theme.textSecondary}
+                  >
+                    {allergenLabel(code).toLowerCase()}{index < dietary.contains.length - 2 ? ', ' : index === dietary.contains.length - 2 ? ' and ' : ''}
+                  </AppText>
+                ))}
+                .
+              </>
+            )
+            : 'No allergens marked on its label.'}
+        {dietary.allergenInfo && dietary.mayContain.length > 0
+          ? ` Its name suggests ${allergenList(dietary.mayContain)}${dietary.contains.length ? ' too' : ''}.`
+          : ''}
+      </AppText>
+    </View>
   );
 }
 
@@ -506,6 +583,29 @@ export function HalalTag({ filled }: { filled?: boolean }) {
 }
 
 const styles = StyleSheet.create({
+  warning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    padding: space.md,
+    borderRadius: radius.md,
+  },
+  dietary: {
+    gap: space.sm,
+    marginTop: -space.sm,
+  },
+  marks: {
+    flexDirection: 'row',
+    gap: space.sm,
+  },
+  markPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: space.sm,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+  },
   flex: {
     flex: 1,
   },

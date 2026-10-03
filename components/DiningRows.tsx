@@ -2,10 +2,12 @@
 import { radius, space, useTheme } from '@/constants/theme';
 import { menuDatabase, OpenStatus, RestaurantSummary } from '@/services/MenuDatabase';
 import type { PreviewKind } from '@/services/menuNutrition';
-import type { MenuItem } from '@/services/menuTypes';
+import { allergenList, dishDietary, hasPreferences } from '@/services/dietary';
+import type { MenuItem, RestaurantMenu } from '@/services/menuTypes';
+import { usePreferences } from '@/services/preferences';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { CaloriePill } from './CaloriePill';
 import { HalalTag } from './MenuItemSheet';
@@ -82,9 +84,11 @@ export function RestaurantRow({
 }
 
 export function DishRow({
-  item, subtitle, preview, onPress, onQuickAdd, adding, divider = true,
+  item, menu, subtitle, preview, onPress, onQuickAdd, adding, divider = true, dietFiltered = false,
 }: {
   item: MenuItem;
+  menu?: RestaurantMenu; // for diet marks and allergy warnings
+  dietFiltered?: boolean; // the list only shows dishes that fit, so marks would repeat on every row
   subtitle?: string;
   preview: { kind: PreviewKind; calories?: number };
   onPress: () => void;
@@ -93,6 +97,14 @@ export function DishRow({
   divider?: boolean;
 }) {
   const theme = useTheme();
+  const { food } = usePreferences();
+  // Only what's relevant to this user: their diet's mark, and allergens they avoid.
+  const dietary = useMemo(() => (menu && hasPreferences(food) ? dishDietary(menu, item) : null), [menu, item, food]);
+  const conflicts = dietary ? dietary.contains.filter(code => food.avoid.includes(code)) : [];
+  const possible = dietary ? dietary.mayContain.filter(code => food.avoid.includes(code)) : [];
+  const dietMark = dietary && food.diet !== 'none' && !dietFiltered
+    ? (dietary.vegan ? 'Vegan' : dietary.vegetarian && food.diet === 'vegetarian' ? 'Vegetarian' : null)
+    : null;
   return (
     <View style={[styles.dish, divider && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.separator }]}>
       <Pressable
@@ -112,7 +124,24 @@ export function DishRow({
         <View style={styles.dishMeta}>
           <CaloriePill kind={preview.kind} calories={preview.calories} />
           {item.price !== undefined && <AppText variant="footnote" tone="secondary">${item.price.toFixed(2)}</AppText>}
+          {dietMark && (
+            <View style={styles.mark}>
+              <Ionicons name="leaf" size={12} color={theme.success} />
+              <AppText variant="caption" weight="600" color={theme.success}>{dietMark}</AppText>
+            </View>
+          )}
         </View>
+        {(conflicts.length > 0 || possible.length > 0) && (
+          <View style={styles.mark}>
+            <Ionicons name="warning" size={13} color={conflicts.length ? theme.danger : theme.warning} />
+            <AppText variant="caption" weight="600" tone={conflicts.length ? 'danger' : 'warning'}>
+              {[
+                conflicts.length ? `Contains ${allergenList(conflicts)}` : '',
+                possible.length ? `${conflicts.length ? 'may contain' : 'May contain'} ${allergenList(possible)}` : '',
+              ].filter(Boolean).join(', ')}
+            </AppText>
+          </View>
+        )}
       </Pressable>
       {onQuickAdd && (
         <PressableScale
@@ -132,6 +161,11 @@ export function DishRow({
 }
 
 const styles = StyleSheet.create({
+  mark: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
   flex: {
     flex: 1,
     gap: 2,

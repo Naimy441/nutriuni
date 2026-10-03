@@ -6,6 +6,8 @@ import { WeekStrip } from '@/components/WeekStrip';
 import { space, useTheme } from '@/constants/theme';
 import { greeting, longDayLabel, relativeDayLabel } from '@/services/dates';
 import { useLoggedDays, useToday } from '@/services/NutritionTracker';
+import { usePreferences } from '@/services/preferences';
+import { scheduleNote } from '@/services/schedule';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -29,12 +31,15 @@ export default function TodayScreen() {
   }, [today]);
 
   const isToday = selected === today;
+  // "Suhoor ends 5:48 am · Iftar 6:00 pm" while fasting, else a greeting.
+  const { schedule } = usePreferences();
+  const note = scheduleNote(schedule, selected);
   const header = (
     <View style={styles.header}>
       <View style={styles.titleRow}>
         <View style={styles.titleText}>
           <AppText variant="subhead" tone="secondary" weight="600">
-            {isToday ? greeting() : longDayLabel(selected)}
+            {isToday ? note ?? greeting() : longDayLabel(selected)}
           </AppText>
           <AppText variant="largeTitle" accessibilityRole="header">
             {isToday ? 'Today' : relativeDayLabel(selected, today)}

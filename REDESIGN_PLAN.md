@@ -196,3 +196,38 @@ UI in `components/PlanCards.tsx`, `components/UpNext.tsx` (Today), `app/plan.tsx
   "Customizable" label.
 - **Plan / Progress:** "How does the plan work?" collapses, in one card with the
   Balance switch; Progress stats are one 2 × 2 card.
+
+## Eating schedules, diets and allergies
+
+Profile → Food preferences (`app/preferences.tsx`), also two optional onboarding
+steps. Stored under `preferences` (`services/preferences.ts`); everything is off by
+default and changes apply immediately.
+
+- **How you eat** (`services/schedule.ts`): Three meals, No breakfast, Eating window
+  (start/end in 30-min steps; "First meal / Last meal / Snacks"), One meal a day (a
+  single "Meal"), Fasting for Ramadan (Suhoor before dawn, Iftar at sunset, optional
+  Late snack). `mealSlots(schedule, date)` gives each meal's label, icon, window,
+  share of the day, floor and cap; Today, Log, the meal picker, the planner and
+  toasts all read meal names from it. A meal picker with one option is hidden.
+  Learned meal shares only apply to Three meals.
+- **Ramadan times** (`services/fastingTimes.ts`): calculated on the phone for
+  Durham (ISNA, Fajr at 15°), in device time like dining hours. Today's header shows
+  "Suhoor ends 5:46 am · Iftar 6:02 pm". Suhoor picks for tomorrow are restaurants
+  open the night before, tagged "Pick up the night before".
+- **Diet and halal** (`services/dietary.ts`): Vegetarian / Vegan, and Halal
+  (halal-certified dishes plus vegetarian ones). **Allergies:** milk, egg, wheat,
+  gluten, soy, peanut, tree nuts, fish, shellfish, sesame.
+- **Data:** the upstream builder now publishes each label's `contains` (allergen
+  icons) and `diet` (vegetarian/vegan icons), plus per-kitchen `allergen_info` and
+  `diet_info`, so "unmarked" is never read as "free of" in a kitchen that doesn't
+  publish icons. Labels sometimes miss icons, so names and descriptions add caution
+  ("provolone", "Contains: Dairy", "shrimp", "bacon"), read one name at a time;
+  names never remove a warning.
+- **Where it shows:** suggestions only include dishes marked as fitting (your own
+  saved meals always count); restaurant pages filter to fitting dishes by default
+  (one chip, or a "doesn't mark …, ask staff" note); rows show "Contains milk" /
+  "May contain milk" and a Vegetarian/Vegan leaf only when the list isn't already
+  filtered; the dish sheet has a warning banner and a short dietary summary. A
+  disclaimer explains icons can be incomplete and cross-contact is possible.
+- **Checks:** verify-planner covers schedules, fasting times, icon/name heuristics
+  and suggestions for each kind of eater against the bundled menus (269 checks).

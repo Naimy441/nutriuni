@@ -12,6 +12,8 @@ import { addDays, dateFromKey, weekOf } from './dates';
 import type { MealType } from './meals';
 import { canQuickLog, computeNutrition, defaultSelection } from './menuNutrition';
 import type { MenuItem, RestaurantMenu, WeeklyHours } from './menuTypes';
+import { checkPreferences, dietaryOf, DishDietary, FoodPreferences, hasPreferences } from './dietary';
+import { MealSlot, mealInfo } from './schedule';
 
 // ---- tuning ----
 
@@ -34,20 +36,10 @@ export const PLANNER = {
 
 export const DEFAULT_SHARES: Record<MealType, number> = { breakfast: 0.25, lunch: 0.35, dinner: 0.3, snack: 0.1 };
 
-// No meal is planned smaller than this (snacks are simply dropped instead),
-// and no meal larger than this share of the day.
-const MEAL_FLOOR: Record<MealType, number> = { breakfast: 250, lunch: 350, dinner: 400, snack: 150 };
-const MEAL_CAP: Record<MealType, number> = { breakfast: 0.45, lunch: 0.45, dinner: 0.45, snack: 0.2 };
+// Meal sizes, minimums, maximums and times come from the user's eating
+// schedule (services/schedule.ts). A meal not logged by the end of its window
+// is treated as skipped; suggestions need the restaurant open during it.
 const MEAL_PROTEIN_CAP = 60;
-
-// Minutes after midnight. A meal not logged by the end of its window is
-// treated as skipped; suggestions need the restaurant open during it.
-export const MEAL_WINDOWS: Record<MealType, { start: number; end: number }> = {
-  breakfast: { start: 7 * 60, end: 11 * 60 + 30 },
-  lunch: { start: 11 * 60, end: 16 * 60 },
-  dinner: { start: 17 * 60, end: 22 * 60 },
-  snack: { start: 14 * 60, end: 23 * 60 },
-};
 
 const MEAL_ORDER: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
 
@@ -278,88 +270,107 @@ export type MealState = 'eaten' | 'planned' | 'skipped' | 'optional';
 
 export interface MealTarget {
   meal: MealType;
+  label: string; // under the user's schedule: "Lunch", "Iftar", "First meal"…
+  icon: MealSlot['icon'];
   state: MealState; // optional: a snack there's no room for today
   calories: number; // planned calories (or eaten, for eaten meals)
   protein: number;
   eaten: Totals;
   size: 'lighter' | 'usual' | 'bigger';
+  window: { start: number; end: number };
 }
 
+// Targets for each meal of the day under the user's schedule. Meals outside
+// the schedule only appear if something was logged to them.
 export function planMeals(input: {
   day: DayPlan;
   log?: LoggedDay;
   nowMinutes: number | null; // minutes after midnight for today; null for future days
-  shares: Record<MealType, number>;
+  slots: MealSlot[];
+  shares?: Partial<Record<MealType, number>>; // learned sizes; defaults to the schedule's
 }): MealTarget[] {
-  const { day, log, nowMinutes, shares } = input;
+  const { day, log, nowMinutes, slots } = input;
+  const shareOf = (slot: MealSlot) => input.shares?.[slot.meal] ?? slot.share;
   const eatenTotal = log?.calories ?? 0;
   const eatenProtein = log?.protein ?? 0;
   const results = new Map<MealType, MealTarget>();
-  const open: MealType[] = [];
+  const open: MealSlot[] = [];
   for (const meal of MEAL_ORDER) {
+    const slot = slots.find(s => s.meal === meal);
     const logged = log?.byMeal[meal];
     const eaten = { calories: logged?.calories ?? 0, protein: logged?.protein ?? 0 };
+    const info = mealInfo(slots, meal);
+    const base = { meal, label: info.label, icon: info.icon, eaten, size: 'usual' as const, window: { start: slot?.start ?? 0, end: slot?.end ?? 0 } };
     if ((logged?.items ?? 0) > 0) {
-      results.set(meal, { meal, state: 'eaten', calories: eaten.calories, protein: eaten.protein, eaten, size: 'usual' });
-    } else if (nowMinutes !== null && nowMinutes >= MEAL_WINDOWS[meal].end) {
-      results.set(meal, { meal, state: 'skipped', calories: 0, protein: 0, eaten, size: 'usual' });
+      results.set(meal, { ...base, state: 'eaten', calories: eaten.calories, protein: eaten.protein });
+    } else if (!slot) {
+      continue;
+    } else if (nowMinutes !== null && nowMinutes >= slot.end) {
+      results.set(meal, { ...base, state: 'skipped', calories: 0, protein: 0 });
     } else {
-      open.push(meal);
+      open.push(slot);
     }
   }
 
-  const allocation = allocate(Math.max(0, day.target - eatenTotal), open, shares, day.target);
-  const plannedCalories = open.reduce((sum, meal) => sum + allocation[meal], 0);
+  const allocation = allocate(Math.max(0, day.target - eatenTotal), open, shareOf, day.target);
+  const plannedCalories = open.reduce((sum, slot) => sum + allocation[slot.meal], 0);
   const proteinLeft = Math.max(0, day.proteinTarget - eatenProtein);
-  for (const meal of open) {
-    const calories = allocation[meal];
-    const protein = plannedCalories > 0 ? Math.min(MEAL_PROTEIN_CAP, Math.round((proteinLeft * calories) / plannedCalories)) : 0;
-    const usual = shares[meal] * day.goal;
-    results.set(meal, {
-      meal,
+  const shareTotal = slots.reduce((sum, slot) => sum + shareOf(slot), 0) || 1;
+  for (const slot of open) {
+    const calories = allocation[slot.meal];
+    const proteinCap = Math.max(MEAL_PROTEIN_CAP, Math.round(day.proteinTarget * slot.cap));
+    const protein = plannedCalories > 0 ? Math.min(proteinCap, Math.round((proteinLeft * calories) / plannedCalories)) : 0;
+    const usual = (shareOf(slot) / shareTotal) * day.goal;
+    results.set(slot.meal, {
+      meal: slot.meal,
+      label: slot.label,
+      icon: slot.icon,
       state: calories > 0 ? 'planned' : 'optional',
       calories,
       protein,
       eaten: { calories: 0, protein: 0 },
       size: calories < usual * 0.85 ? 'lighter' : calories > usual * 1.15 ? 'bigger' : 'usual',
+      window: { start: slot.start, end: slot.end },
     });
   }
-  return MEAL_ORDER.map(meal => results.get(meal)!);
+  return MEAL_ORDER.flatMap(meal => results.get(meal) ?? []);
 }
 
 // Splits `remaining` calories across open meals by share, then enforces each
 // meal's floor and cap, re-splitting what's left until nothing is violated.
-function allocate(remaining: number, open: MealType[], shares: Record<MealType, number>, dayTarget: number): Record<MealType, number> {
+function allocate(remaining: number, open: MealSlot[], shareOf: (slot: MealSlot) => number, dayTarget: number): Record<MealType, number> {
   const result: Record<MealType, number> = { breakfast: 0, lunch: 0, dinner: 0, snack: 0 };
   let active = [...open];
   let budget = remaining;
   for (let guard = 0; guard < 10 && active.length; guard++) {
-    const shareTotal = active.reduce((sum, meal) => sum + shares[meal], 0);
-    const value = (meal: MealType) => (budget * shares[meal]) / shareTotal;
-    // A snack that won't fit is dropped first, and its share goes to the meals.
-    if (active.includes('snack') && active.length > 1 && value('snack') < MEAL_FLOOR.snack) {
-      active = active.filter(meal => meal !== 'snack');
+    const shareTotal = active.reduce((sum, slot) => sum + shareOf(slot), 0);
+    const value = (slot: MealSlot) => (budget * shareOf(slot)) / shareTotal;
+    // An optional meal (a snack) that won't fit is dropped first, and its
+    // share goes to the meals.
+    const dropped = active.find(slot => slot.optional && value(slot) < slot.floor);
+    if (dropped && active.length > 1) {
+      active = active.filter(slot => slot !== dropped);
       continue;
     }
-    const fixed: MealType[] = [];
-    for (const meal of active) {
-      const cap = Math.max(MEAL_FLOOR[meal], dayTarget * MEAL_CAP[meal]);
-      if (value(meal) < MEAL_FLOOR[meal]) {
+    const fixed: MealSlot[] = [];
+    for (const slot of active) {
+      const cap = Math.max(slot.floor, dayTarget * slot.cap);
+      if (value(slot) < slot.floor) {
         // Main meals keep a sensible minimum, even on a day that's already over.
-        result[meal] = meal === 'snack' ? 0 : MEAL_FLOOR[meal];
-        fixed.push(meal);
-      } else if (value(meal) > cap) {
-        result[meal] = cap;
-        fixed.push(meal);
+        result[slot.meal] = slot.optional ? 0 : slot.floor;
+        fixed.push(slot);
+      } else if (value(slot) > cap) {
+        result[slot.meal] = cap;
+        fixed.push(slot);
       }
     }
     if (!fixed.length) {
-      for (const meal of active) result[meal] = value(meal);
+      for (const slot of active) result[slot.meal] = value(slot);
       break;
     }
-    for (const meal of fixed) budget -= result[meal];
+    for (const slot of fixed) budget -= result[slot.meal];
     budget = Math.max(0, budget);
-    active = active.filter(meal => !fixed.includes(meal));
+    active = active.filter(slot => !fixed.includes(slot));
   }
   for (const meal of MEAL_ORDER) result[meal] = round10(result[meal]);
   return result;
@@ -386,6 +397,7 @@ export interface FoodOption {
   itemId?: string; // menu item
   savedId?: string; // saved food
   details?: string;
+  dietary?: DishDietary; // from the labels; unknown for saved foods
 }
 
 // The user's saved foods (recents and their own meals), as stored by FastAccessService.
@@ -476,6 +488,12 @@ function menuOption(menu: RestaurantMenu, section: string, item: MenuItem, hours
     hours,
     hoursKnown: Boolean(hours && Object.keys(hours).length),
     itemId: item.id,
+    dietary: dietaryOf(
+      result.parts.filter(part => part.sign > 0).map(part => part.label),
+      menu,
+      Boolean(item.halal),
+      [item.name, item.description ?? '', ...result.parts.filter(part => part.sign > 0).map(part => part.name)],
+    ),
   };
 }
 
@@ -559,7 +577,7 @@ export interface Suggestion {
   calories: number;
   protein: number;
   approx: boolean;
-  tags: ('high-protein' | 'favorite' | 'my-meal' | 'check-hours')[];
+  tags: ('high-protein' | 'favorite' | 'my-meal' | 'check-hours' | 'pick-up-early')[];
   score: number;
 }
 
@@ -582,6 +600,7 @@ export function recommend(input: {
   window: { from: number; to: number }; // minutes after midnight
   familiar: Map<string, number>; // familiarKey → times logged
   limit?: number;
+  prefs?: FoodPreferences; // only dishes marked as fitting them
 }): Suggestion[] {
   const { pool, meal, calories: C, protein: P, date, window, familiar } = input;
   const limit = input.limit ?? 4;
@@ -589,7 +608,14 @@ export function recommend(input: {
   const weekday = dateFromKey(date).getDay();
   const fit = MEAL_FIT[meal];
 
+  const filtering = input.prefs && hasPreferences(input.prefs);
   const available = pool.filter(option => {
+    if (filtering) {
+      // The user's own meals are theirs to judge; everything else must be
+      // marked as fitting (unmarked is unknown, so it's left out).
+      const ownMeal = option.source === 'saved' && !option.restaurantId;
+      if (!ownMeal && !(option.dietary && checkPreferences(option.dietary, input.prefs!).fits)) return false;
+    }
     if (option.weekday !== null && option.weekday !== weekday) return false;
     if (option.restaurantId && REMOTE_RESTAURANTS.has(option.restaurantId)
       && !familiar.has(familiarKey(option.restaurantName, option.name))) return false;
@@ -615,47 +641,62 @@ export function recommend(input: {
     return s;
   };
 
-  const candidates: Suggestion[] = [];
-  const singleRange = meal === 'snack' ? [0.4, 1.2] : [0.6, 1.15];
+  // First within a tight calorie range; if that finds almost nothing (a
+  // strict diet, few places open), widen it and offer the closest fits.
+  const generate = (relaxed: boolean): Suggestion[] => {
+    const found: Suggestion[] = [];
+    const singleRange = meal === 'snack'
+      ? (relaxed ? [0.3, 1.3] : [0.4, 1.2])
+      : (relaxed ? [0.4, 1.25] : [0.6, 1.15]);
 
-  // Single dishes.
-  for (const option of available) {
-    const mealFit = fit[option.category];
-    if (mealFit === undefined) continue;
-    if (option.calories < C * singleRange[0] || option.calories > C * singleRange[1]) continue;
-    candidates.push(suggestion([option], score(option.calories, option.protein) + mealFit + preference(option)));
-  }
-
-  // A dish plus a side, drink or one of the user's meals, for bigger meals
-  // where no single dish lands close.
-  if (meal !== 'snack' && C >= 400) {
-    // The anchor of a pair is a real dish, never a drink or another smoothie.
-    const mains = available.filter(option => (option.category === 'main' || option.category === 'breakfast')
-      && fit[option.category] !== undefined
-      && option.calories >= C * 0.4 && option.calories <= C * 0.85);
-    const partners = available.filter(option => PARTNERS.has(option.category) || (option.source === 'saved' && !option.restaurantId))
-      .filter(option => option.calories <= C * 0.6);
-    const byRestaurant = new Map<string, FoodOption[]>();
-    for (const partner of partners) {
-      const key = partner.restaurantId ?? '*';
-      byRestaurant.set(key, [...(byRestaurant.get(key) ?? []), partner]);
+    // Single dishes.
+    for (const option of available) {
+      const mealFit = fit[option.category];
+      if (mealFit === undefined) continue;
+      if (option.calories < C * singleRange[0] || option.calories > C * singleRange[1]) continue;
+      found.push(suggestion([option], score(option.calories, option.protein) + mealFit + preference(option)));
     }
-    const density = (option: FoodOption) => option.protein / Math.max(option.calories, 1);
-    const topMains = [...mains].sort((a, b) => density(b) - density(a)).slice(0, 60);
-    for (const main of topMains) {
-      const options = [...(byRestaurant.get(main.restaurantId ?? '') ?? []), ...(byRestaurant.get('*') ?? [])];
-      for (const partner of options) {
-        if (partner.key === main.key) continue;
-        const calories = main.calories + partner.calories;
-        if (calories < C * 0.75 || calories > C * 1.12) continue;
-        const protein = main.protein + partner.protein;
-        candidates.push(suggestion(
-          [main, partner],
-          score(calories, protein) + (fit[main.category] ?? 0) + preference(main) + preference(partner) / 2 + 0.07,
-        ));
+
+    // A dish plus a side, drink or one of the user's meals, for bigger meals
+    // where no single dish lands close. Big meals (one meal a day, a big
+    // iftar, a lunch after skipping breakfast) can be two dishes from one place.
+    if (meal !== 'snack' && C >= 400) {
+      const big = C > 900;
+      // The anchor of a pair is a real dish, never a drink or another smoothie.
+      const mains = available.filter(option => (option.category === 'main' || option.category === 'breakfast')
+        && fit[option.category] !== undefined
+        && option.calories >= C * (big || relaxed ? 0.25 : 0.4) && option.calories <= C * (big ? 0.75 : 0.85));
+      const partners = available.filter(option => PARTNERS.has(option.category) || (option.source === 'saved' && !option.restaurantId)
+        || (big && fit[option.category] !== undefined))
+        .filter(option => option.calories <= C * (big ? 0.75 : 0.6));
+      const byRestaurant = new Map<string, FoodOption[]>();
+      for (const partner of partners) {
+        const key = partner.restaurantId ?? '*';
+        byRestaurant.set(key, [...(byRestaurant.get(key) ?? []), partner]);
+      }
+      const density = (option: FoodOption) => option.protein / Math.max(option.calories, 1);
+      const topMains = [...mains].sort((x, y) => density(y) - density(x)).slice(0, 60);
+      const low = relaxed ? 0.6 : big ? 0.8 : 0.75;
+      const high = relaxed ? 1.2 : big ? 1.1 : 1.12;
+      for (const main of topMains) {
+        const options = [...(byRestaurant.get(main.restaurantId ?? '') ?? []), ...(byRestaurant.get('*') ?? [])];
+        for (const partner of options) {
+          if (partner.key === main.key) continue;
+          const calories = main.calories + partner.calories;
+          if (calories < C * low || calories > C * high) continue;
+          const protein = main.protein + partner.protein;
+          found.push(suggestion(
+            [main, partner],
+            score(calories, protein) + (fit[main.category] ?? 0) + preference(main) + preference(partner) / 2 + 0.07,
+          ));
+        }
       }
     }
-  }
+    return found;
+  };
+
+  let candidates = generate(false);
+  if (new Set(candidates.map(c => c.parts[0].restaurantId ?? 'mine')).size < 2) candidates = generate(true);
 
   candidates.sort((a, b) => a.score - b.score);
 
@@ -699,8 +740,7 @@ function suggestion(parts: FoodOption[], score: number): Suggestion {
 
 // When to look for open restaurants for a meal: the rest of its window today
 // (from now), or the whole window on another day.
-export function mealWindow(meal: MealType, nowMinutes: number | null): { from: number; to: number } {
-  const window = MEAL_WINDOWS[meal];
+export function mealWindow(window: { start: number; end: number }, nowMinutes: number | null): { from: number; to: number } {
   if (nowMinutes === null) return { from: window.start, to: window.end };
   const from = Math.max(window.start, nowMinutes);
   return { from, to: Math.max(from + 60, window.end) };

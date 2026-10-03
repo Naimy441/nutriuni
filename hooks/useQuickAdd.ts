@@ -1,6 +1,7 @@
 import { useToast } from '@/components/ui/Toast';
 import { relativeDayLabel } from '@/services/dates';
-import { MealType, mealForTime, mealLabel } from '@/services/meals';
+import { MealType } from '@/services/meals';
+import { currentMeal, currentMealLabel } from '@/services/preferences';
 import { quickLogEntry } from '@/services/menuLogging';
 import { canQuickLog } from '@/services/menuNutrition';
 import type { MenuItem, RestaurantMenu } from '@/services/menuTypes';
@@ -20,12 +21,12 @@ export function useQuickAdd(openSheet: (menu: RestaurantMenu, item: MenuItem) =>
       return;
     }
     const date = target.date ?? today;
-    const meal = target.meal ?? mealForTime();
+    const meal = target.meal ?? currentMeal();
     setAddingId(item.id);
     try {
       const tracked = await nutritionTracker.addTrackedItem(quickLogEntry(menu, item), { date, meal });
       toast.show({
-        message: `Added ${item.name} to ${mealLabel(meal)}${date !== today ? ` · ${relativeDayLabel(date, today)}` : ''}`,
+        message: `Added ${item.name} to ${currentMealLabel(meal, date)}${date !== today ? ` · ${relativeDayLabel(date, today)}` : ''}`,
         action: { label: 'Undo', onPress: () => nutritionTracker.removeItem(tracked.id, date) },
       });
     } catch {

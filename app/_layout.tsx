@@ -4,6 +4,7 @@ import { Theme, useTheme } from '@/constants/theme';
 import { appearanceStore } from '@/services/appearance';
 import { goalsStore, useGoals } from '@/services/goals';
 import { menuDatabase } from '@/services/MenuDatabase';
+import { preferencesStore } from '@/services/preferences';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
@@ -44,7 +45,7 @@ export default function RootLayout() {
   // wait for settings so the first frame has the right screen and colors.
   useEffect(() => {
     menuDatabase.start();
-    Promise.all([goalsStore.load(), appearanceStore.load()]).finally(() => setLoaded(true));
+    Promise.all([goalsStore.load(), appearanceStore.load(), preferencesStore.load()]).finally(() => setLoaded(true));
   }, []);
 
   useEffect(() => {
@@ -81,6 +82,7 @@ export default function RootLayout() {
                 <Stack.Screen name="goals" options={{ ...headerOptions, title: 'Daily targets' }} />
                 <Stack.Screen name="plan" options={{ ...headerOptions, title: 'Meal plan' }} />
                 <Stack.Screen name="profile-edit" options={{ ...headerOptions, title: 'Your details' }} />
+                <Stack.Screen name="preferences" options={{ ...headerOptions, title: 'Food preferences' }} />
                 <Stack.Screen name="sources" options={{ ...headerOptions, title: 'Sources & methods' }} />
                 <Stack.Screen name="+not-found" options={{ ...headerOptions, title: 'Not found' }} />
               </Stack>

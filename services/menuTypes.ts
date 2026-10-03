@@ -16,6 +16,10 @@ export interface FoodLabel {
   cholesterol?: number;
   added_sugar?: number;
   halal: boolean;
+  // NetNutrition icons. Empty or missing means nothing is marked, not that
+  // the food is free of it (see RestaurantMenu.allergen_info / diet_info).
+  contains?: string[]; // allergen codes: milk, egg, wheat, gluten, soy, peanut, tree_nut, fish, shellfish, sesame
+  diet?: string[]; // vegetarian, vegan (vegan implies vegetarian)
   last_seen: string;
 }
 
@@ -79,6 +83,8 @@ export interface RestaurantMenu {
   hours?: WeeklyHours;
   hours_text?: string;
   menu_updated_at?: string;
+  allergen_info?: boolean; // the kitchen marks allergens on its labels
+  diet_info?: boolean; // the kitchen marks vegetarian / vegan dishes
 }
 
 export interface RestaurantSummary {

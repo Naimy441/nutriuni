@@ -3,9 +3,10 @@ import { formatNumber } from '@/constants/nutrients';
 import { radius, space, useTheme } from '@/constants/theme';
 import { suggestionTitle } from '@/hooks/usePlanner';
 import { dateFromKey, weekdayInitial } from '@/services/dates';
-import { MEALS } from '@/services/meals';
 import type { FoodOption, MealTarget, Suggestion, WeekPlan } from '@/services/planner';
 import { weekMessage } from '@/services/planner';
+import { hasPreferences } from '@/services/dietary';
+import { usePreferences } from '@/services/preferences';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
@@ -108,16 +109,16 @@ export function MealPlanCard({
   footer?: React.ReactNode;
 }) {
   const theme = useTheme();
-  const meal = MEALS.find(m => m.key === target.meal)!;
   const size = SIZE_TEXT[target.size];
+  const { food } = usePreferences();
   return (
     <Card padded={false} style={styles.mealCard}>
       {showHeader && (
         <View style={styles.mealHeader}>
-          <Ionicons name={meal.icon} size={18} color={theme.brandText} />
+          <Ionicons name={target.icon} size={18} color={theme.brandText} />
           <View style={styles.flex}>
             <View style={styles.mealTitleRow}>
-              <AppText variant="headline">{meal.label}</AppText>
+              <AppText variant="headline">{target.label}</AppText>
               {target.state === 'planned' && size ? (
                 <View style={[styles.sizeTag, { backgroundColor: target.size === 'lighter' ? theme.fill : theme.brandSoft }]}>
                   <AppText variant="micro" tone={target.size === 'lighter' ? 'secondary' : 'brand'}>{size.toUpperCase()}</AppText>
@@ -155,7 +156,9 @@ export function MealPlanCard({
             <AppText variant="footnote" tone="tertiary">
               {target.calories < 120
                 ? 'You’re about at today’s target — a piece of fruit or nothing at all.'
-                : 'Nothing open fits right now. Quick add works for anything off-menu.'}
+                : hasPreferences(food)
+                  ? 'Nothing open is marked as fitting your diet right now. Your saved meals and Quick add still work.'
+                  : 'Nothing open fits right now. Quick add works for anything off-menu.'}
             </AppText>
           </View>
         )
@@ -165,13 +168,14 @@ export function MealPlanCard({
   );
 }
 
-const TAG_PRIORITY: Suggestion['tags'][number][] = ['my-meal', 'favorite', 'check-hours'];
+const TAG_PRIORITY: Suggestion['tags'][number][] = ['pick-up-early', 'my-meal', 'favorite', 'check-hours'];
 
 const TAG_TEXT: Record<Suggestion['tags'][number], string> = {
   'high-protein': 'High protein',
   favorite: 'You’ve had this',
   'my-meal': 'Your meal',
   'check-hours': 'Check hours',
+  'pick-up-early': 'Pick up the night before',
 };
 
 export function SuggestionRow({ suggestion, onOpen, onLog, logging, divider = true }: {

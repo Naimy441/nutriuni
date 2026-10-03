@@ -19,8 +19,9 @@ import { useQuickAdd } from '@/hooks/useQuickAdd';
 import { useRestaurants } from '@/hooks/useRestaurants';
 import { relativeDayLabel } from '@/services/dates';
 import { CUSTOM_MEAL_RESTAURANT, FastAccessItem, fastAccessService, useFastAccess } from '@/services/FastAccessService';
-import { isMealType, MealType, mealForTime, mealLabel } from '@/services/meals';
-import { menuDatabase, openStatus, useClock, useMenuRevision } from '@/services/MenuDatabase';
+import { isMealType, MealType } from '@/services/meals';
+import { currentMeal, useMealLabel } from '@/services/preferences';
+import { hoursTextLabel, menuDatabase, openStatus, useClock, useMenuRevision } from '@/services/MenuDatabase';
 import { describePreview } from '@/services/menuNutrition';
 import type { MenuItem, RestaurantMenu } from '@/services/menuTypes';
 import { formatTrackedCalories, mealOf, nutritionTracker, useDayLog, useToday } from '@/services/NutritionTracker';
@@ -66,7 +67,8 @@ function LogContent() {
   const today = useToday();
   const params = useLocalSearchParams<{ date?: string; meal?: string }>();
   const date = typeof params.date === 'string' && DATE_PATTERN.test(params.date) && params.date <= today ? params.date : today;
-  const [meal, setMeal] = useState<MealType>(isMealType(params.meal) ? params.meal : mealForTime());
+  const [meal, setMeal] = useState<MealType>(isMealType(params.meal) ? params.meal : currentMeal());
+  const mealLabel = useMealLabel(date);
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState<Tab>('recent');
   const [browsing, setBrowsing] = useState<string | null>(null);
@@ -122,7 +124,7 @@ function LogContent() {
           </View>
           <IconButton icon="close" accessibilityLabel="Close" onPress={close} />
         </View>
-        <MealPicker value={meal} onChange={setMeal} />
+        <MealPicker value={meal} onChange={setMeal} date={date} />
         <SearchField value={query} onChangeText={setQuery} placeholder="Search dishes, restaurants, your meals" />
         {!searching && <Tabs options={TABS} value={tab} onChange={next => { setTab(next); setBrowsing(null); }} />}
       </View>
@@ -217,6 +219,7 @@ function LogContent() {
 
 function MealFooter({ date, meal, onDone }: { date: string; meal: MealType; onDone: () => void }) {
   const theme = useTheme();
+  const mealLabel = useMealLabel(date);
   const insets = useSafeAreaInsets();
   const { log } = useDayLog(date);
   const items = log.items.filter(item => mealOf(item) === meal);
@@ -390,6 +393,7 @@ function SearchResults({ query, saved, onLogSaved, onOpenRestaurant, onOpenDish,
                 <DishRow
                   key={`${result.restaurant.id}/${result.item.id}`}
                   item={result.item}
+                  menu={menu}
                   subtitle={`${result.restaurant.name} · ${result.section}`}
                   preview={describePreview(menu, result.item)}
                   onPress={() => onOpenDish(menu, result.item)}
@@ -456,7 +460,7 @@ function RestaurantMenuList({ id, onBack, onOpenDish, onQuickAdd, addingId }: {
       </PressableScale>
       <View>
         <AppText variant="title2">{menu.name}</AppText>
-        <StatusLine status={menu.hours ? openStatus(menu.hours, now) : null} fallback={menu.hours_text} />
+        <StatusLine status={menu.hours ? openStatus(menu.hours, now) : null} fallback={hoursTextLabel(menu.hours_text)} />
       </View>
       {menu.sections.map(section => (
         <View key={section.name} style={styles.smallGap}>
@@ -466,6 +470,7 @@ function RestaurantMenuList({ id, onBack, onOpenDish, onQuickAdd, addingId }: {
               <DishRow
                 key={item.id}
                 item={item}
+                menu={menu}
                 preview={previews.get(item) ?? { kind: 'none' }}
                 onPress={() => onOpenDish(menu, item)}
                 onQuickAdd={() => onQuickAdd(menu, item)}
@@ -490,6 +495,7 @@ const MACRO_FIELDS = [
 
 function QuickAddForm({ date, meal }: { date: string; meal: MealType }) {
   const theme = useTheme();
+  const mealLabel = useMealLabel(date);
   const toast = useToast();
   const [name, setName] = useState('');
   const [calories, setCalories] = useState('');

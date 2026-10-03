@@ -3,7 +3,8 @@ import { NUTRIENTS, formatAmount } from '@/constants/nutrients';
 import { radius, space, useTheme } from '@/constants/theme';
 import { relativeDayLabel, timeLabel } from '@/services/dates';
 import { sourceLabel } from '@/services/FastAccessService';
-import { MealType, mealLabel } from '@/services/meals';
+import { MealType } from '@/services/meals';
+import { currentMealLabel } from '@/services/preferences';
 import { formatTrackedCalories, mealOf, nutritionTracker, TrackedItem } from '@/services/NutritionTracker';
 import { Ionicons } from '@expo/vector-icons';
 import { BottomSheetView } from '@gorhom/bottom-sheet';
@@ -12,7 +13,7 @@ import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText } from './ui/AppText';
 import { Button } from './ui/Button';
-import { MealPicker } from './MealPicker';
+import { MealPicker, useMealOptions } from './MealPicker';
 import { IconButton } from './ui/IconButton';
 import { Sheet, SheetRef } from './ui/Sheet';
 import { useToast } from './ui/Toast';
@@ -49,6 +50,7 @@ export function TrackedItemSheet({ selection, onDismiss }: { selection: TrackedS
   const item = shown?.item;
   const date = shown?.date;
   const meal = item ? mealOf(item) : 'snack';
+  const mealOptions = useMealOptions(meal, date);
 
   const moveTo = async (next: MealType) => {
     if (!item || !date || next === meal) return;
@@ -134,13 +136,15 @@ export function TrackedItemSheet({ selection, onDismiss }: { selection: TrackedS
               )}
             </View>
 
-            <View style={styles.mealGroup}>
-              <AppText variant="footnote" tone="secondary" weight="600" style={styles.sectionLabel}>MEAL</AppText>
-              <MealPicker value={meal} onChange={moveTo} />
-            </View>
+            {mealOptions.length > 1 && (
+              <View style={styles.mealGroup}>
+                <AppText variant="footnote" tone="secondary" weight="600" style={styles.sectionLabel}>MEAL</AppText>
+                <MealPicker value={meal} onChange={moveTo} date={date} />
+              </View>
+            )}
 
             <View style={styles.actions}>
-              <Button title="Log again" icon="repeat" variant="tinted" onPress={logAgain} style={styles.flex} accessibilityLabel={`Log ${item.name} again to ${mealLabel(meal)}`} />
+              <Button title="Log again" icon="repeat" variant="tinted" onPress={logAgain} style={styles.flex} accessibilityLabel={`Log ${item.name} again to ${currentMealLabel(meal, date)}`} />
               <Button title="Delete" icon="trash-outline" variant="danger" onPress={remove} style={styles.flex} haptic="medium" />
             </View>
           </>

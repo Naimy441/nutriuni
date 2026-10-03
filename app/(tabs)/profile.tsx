@@ -8,6 +8,9 @@ import { formatNumber } from '@/constants/nutrients';
 import { radius, space, useTheme } from '@/constants/theme';
 import { appearanceStore, useAppearance } from '@/services/appearance';
 import { fastAccessService } from '@/services/FastAccessService';
+import { hasPreferences, preferencesLabel } from '@/services/dietary';
+import { preferencesStore, usePreferences } from '@/services/preferences';
+import { SCHEDULES } from '@/services/schedule';
 import { ACTIVITY_LEVELS, calculateGoals, goalsStore, useGoals, WEIGHT_GOALS } from '@/services/goals';
 import { menuDatabase, useMenuRevision } from '@/services/MenuDatabase';
 import { nutritionTracker } from '@/services/NutritionTracker';
@@ -28,6 +31,11 @@ export default function ProfileScreen() {
   const toast = useToast();
   const { goals, profile, planner } = useGoals();
   const appearance = useAppearance();
+  const { food, schedule } = usePreferences();
+  const preferencesSummary = [
+    SCHEDULES.find(option => option.kind === schedule.kind)?.label,
+    hasPreferences(food) ? preferencesLabel(food) : 'No restrictions',
+  ].join(' · ');
   useMenuRevision();
   const [checking, setChecking] = useState(false);
 
@@ -57,6 +65,7 @@ export default function ProfileScreen() {
           onPress: async () => {
             await nutritionTracker.clearAll();
             await fastAccessService.clearAll();
+            await preferencesStore.reset();
             await goalsStore.reset();
           },
         },
@@ -107,6 +116,13 @@ export default function ProfileScreen() {
               ? `${profile.age} yrs · ${profile.heightFeet}′${profile.heightInches}″ · ${profile.weight} lb · ${activity?.label ?? 'Custom activity'}`
               : 'Add your details for personal targets'}
             onPress={() => router.push('/profile-edit')}
+          />
+          <ListRow
+            icon="nutrition-outline"
+            title="Food preferences"
+            subtitle={preferencesSummary}
+            onPress={() => router.push('/preferences')}
+            divider
           />
           <ListRow icon="options-outline" title="Daily targets" value={custom ? 'Custom' : 'Recommended'} onPress={() => router.push('/goals')} divider />
           <ListRow

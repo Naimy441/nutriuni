@@ -7,6 +7,7 @@ import { AppState } from 'react-native';
 import { dateFromKey, dayKey } from './dates';
 import { fastAccessService } from './FastAccessService';
 import { isMealType, mealForTime, MealType } from './meals';
+import { currentMeal } from './preferences';
 
 export interface DailyNutrition {
   calories: number;
@@ -185,7 +186,7 @@ class NutritionTrackerService {
       sodium: entry.sodium ?? 0,
       id: `${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
       timestamp: at.getTime(),
-      meal: options.meal ?? mealForTime(now),
+      meal: options.meal ?? currentMeal(now),
     };
     await this.edit(date, log => ({ next: { ...log, items: [...log.items, item] }, result: undefined }));
     if (options.remember !== false) await fastAccessService.addOrUpdateFastAccessItem(item);

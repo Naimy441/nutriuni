@@ -6,7 +6,9 @@ import { useDayTargets, useWeekPlan } from '@/hooks/usePlanner';
 import { timeLabel } from '@/services/dates';
 import { fastAccessService, FastAccessItem, sourceLabel, useFastAccess } from '@/services/FastAccessService';
 import { useGoals } from '@/services/goals';
-import { MEALS, MealType, mealForTime, mealLabel } from '@/services/meals';
+import { MealType } from '@/services/meals';
+import { currentMeal, currentMealLabel, useMealSlots } from '@/services/preferences';
+import { mealInfo } from '@/services/schedule';
 import { formatTrackedCalories, mealOf, nutritionTracker, TrackedItem, useDayLog, useLoggedDays } from '@/services/NutritionTracker';
 import { weekBrief, WeekPlan } from '@/services/planner';
 import { Ionicons } from '@expo/vector-icons';
@@ -56,6 +58,12 @@ export function DayView({ date, today, header, bottomPadding }: DayViewProps) {
     return groups;
   }, [log.items]);
 
+  // The schedule's meals, plus any other meal something was logged to.
+  const slots = useMealSlots(date);
+  const meals = (['breakfast', 'lunch', 'dinner', 'snack'] as MealType[])
+    .filter(meal => slots.some(slot => slot.meal === meal) || byMeal[meal].length > 0)
+    .map(meal => ({ key: meal, ...mealInfo(slots, meal) }));
+
   const openLog = (meal?: MealType) => router.push({ pathname: '/log', params: { date, ...(meal ? { meal } : {}) } });
   const firstTime = isToday && log.items.length === 0 && loggedDays.length === 0;
 
@@ -95,9 +103,9 @@ export function DayView({ date, today, header, bottomPadding }: DayViewProps) {
         {isToday && !firstTime && <UpNext date={date} />}
 
         <View>
-          <SectionHeader title="Meals" style={styles.inset} />
+          <SectionHeader title="Meals" actionLabel="Customize" onAction={() => router.push('/preferences')} style={styles.inset} />
           <Card padded={false} style={styles.clip}>
-            {MEALS.map((meal, index) => (
+            {meals.map((meal, index) => (
               <MealSection
                 key={meal.key}
                 meal={meal}
@@ -269,10 +277,10 @@ function RecentsRow({ date }: { date: string }) {
   if (!items.length) return null;
 
   const relog = async (item: FastAccessItem) => {
-    const meal = mealForTime();
+    const meal = currentMeal();
     const added = await nutritionTracker.addTrackedItem(fastAccessService.toNewTrackedItem(item), { date, meal });
     toast.show({
-      message: `Added ${item.name} to ${mealLabel(meal)}`,
+      message: `Added ${item.name} to ${currentMealLabel(meal, date)}`,
       action: { label: 'Undo', onPress: () => nutritionTracker.removeItem(added.id, date) },
     });
   };
@@ -307,7 +315,7 @@ function RecentsRow({ date }: { date: string }) {
 function MealSection({
   meal, items, date, divider, onAdd, onSelect,
 }: {
-  meal: (typeof MEALS)[number];
+  meal: { key: MealType; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] };
   items: TrackedItem[];
   date: string;
   divider: boolean;

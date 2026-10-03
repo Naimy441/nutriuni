@@ -7,10 +7,19 @@ import * as path from 'path';
 import { addDays, weekOf } from '../services/dates';
 import type { MealType } from '../services/meals';
 import type { MenuIndex, RestaurantMenu } from '../services/menuTypes';
+import { checkPreferences, dietaryOf, dishDietary, FoodPreferences, NO_PREFERENCES } from '../services/dietary';
+import { fastingTimes } from '../services/fastingTimes';
 import {
   buildMenuPool, buildSavedPool, categorize, dayOf, familiarityMap, learnMealShares, LoggedDay, mealWindow,
   openDuring, planMeals, planWeek, recommend, SavedFood, weekMessage, DEFAULT_SHARES,
 } from '../services/planner';
+import { DEFAULT_SCHEDULE, EatingSchedule, mealAt, mealSlots } from '../services/schedule';
+
+const STANDARD = mealSlots(DEFAULT_SCHEDULE, '2026-10-04');
+const slotWindow = (meal: MealType) => {
+  const slot = STANDARD.find(s => s.meal === meal)!;
+  return { start: slot.start, end: slot.end };
+};
 
 const failures: string[] = [];
 let passes = 0;
@@ -115,7 +124,7 @@ function logs(...days: LoggedDay[]) {
     breakfast: { calories: 700, protein: 30, items: 2 },
     lunch: { calories: 800, protein: 50, items: 2 },
   });
-  const meals = planMeals({ day: today, log: eaten, nowMinutes: 14 * 60, shares: DEFAULT_SHARES });
+  const meals = planMeals({ day: today, log: eaten, nowMinutes: 14 * 60, slots: STANDARD });
   const dinner = meals.find(m => m.meal === 'dinner')!;
   check('meals: dinner gets what is left', dinner.state === 'planned' && dinner.calories === 500, `${dinner.calories}`);
   check('meals: dinner marked lighter', dinner.size === 'lighter');
@@ -123,21 +132,21 @@ function logs(...days: LoggedDay[]) {
   check('meals: no room for a snack', meals.find(m => m.meal === 'snack')!.state === 'optional');
 
   const over = day(week[0], 2400, 90, { breakfast: { calories: 1100, protein: 40, items: 2 }, lunch: { calories: 1300, protein: 50, items: 2 } });
-  const overMeals = planMeals({ day: today, log: over, nowMinutes: 15 * 60, shares: DEFAULT_SHARES });
+  const overMeals = planMeals({ day: today, log: over, nowMinutes: 15 * 60, slots: STANDARD });
   check('meals: already over → a light dinner, not none', overMeals.find(m => m.meal === 'dinner')!.calories === 400);
 }
 
 // 10. A skipped breakfast moves its share to later meals; no meal balloons.
 {
   const plan = planWeek({ today: week[0], logs: new Map(), goals, balance: true });
-  const meals = planMeals({ day: dayOf(plan, week[0])!, log: undefined, nowMinutes: 13 * 60, shares: DEFAULT_SHARES });
+  const meals = planMeals({ day: dayOf(plan, week[0])!, log: undefined, nowMinutes: 13 * 60, slots: STANDARD });
   check('skip: breakfast skipped after its window', meals[0].state === 'skipped');
   const planned = meals.filter(m => m.state === 'planned');
   const total = planned.reduce((s, m) => s + m.calories, 0);
   check('skip: rest of day still adds up', Math.abs(total - G) <= 30, String(total));
   check('skip: no meal over 45% of the day', planned.every(m => m.calories <= 0.45 * G + 10), planned.map(m => m.calories).join(','));
 
-  const late = planMeals({ day: dayOf(plan, week[0])!, log: undefined, nowMinutes: 19 * 60, shares: DEFAULT_SHARES });
+  const late = planMeals({ day: dayOf(plan, week[0])!, log: undefined, nowMinutes: 19 * 60, slots: STANDARD });
   const dinner = late.find(m => m.meal === 'dinner')!;
   check('late: nothing eaten by 7 pm doesn\'t mean a 2,000 cal dinner', dinner.calories <= 900, String(dinner.calories));
 }
@@ -154,6 +163,99 @@ function logs(...days: LoggedDay[]) {
   const sum = Object.values(shares).reduce((a, b) => a + b, 0);
   check('shares: sum to 1', Math.abs(sum - 1) < 1e-9);
   check('shares: defaults with no history', learnMealShares([], G).lunch === DEFAULT_SHARES.lunch);
+}
+
+
+// 15. Eating schedules.
+{
+  const plan = planWeek({ today: week[0], logs: new Map(), goals, balance: true });
+  const today = dayOf(plan, week[0])!;
+  const schedule = (kind: EatingSchedule['kind'], window = DEFAULT_SCHEDULE.window): EatingSchedule => ({ kind, window });
+
+  const noBreakfast = planMeals({ day: today, nowMinutes: 9 * 60, slots: mealSlots(schedule('no-breakfast'), week[0]) });
+  check('no breakfast: no breakfast planned', !noBreakfast.some(m => m.meal === 'breakfast'), noBreakfast.map(m => m.meal).join(','));
+  const nbTotal = noBreakfast.filter(m => m.state === 'planned').reduce((sum, m) => sum + m.calories, 0);
+  check('no breakfast: lunch and dinner carry the day', Math.abs(nbTotal - G) <= 30, String(nbTotal));
+
+  const omad = planMeals({ day: today, nowMinutes: 10 * 60, slots: mealSlots(schedule('omad'), week[0]) });
+  check('one meal: a single meal', omad.length === 1 && omad[0].label === 'Meal', omad.map(m => m.label).join(','));
+  check('one meal: it holds the whole day', omad[0].calories === G, String(omad[0].calories));
+  check('one meal: protein not capped at 60 g', omad[0].protein >= P - 5, String(omad[0].protein));
+
+  const window = planMeals({ day: today, nowMinutes: 9 * 60, slots: mealSlots(schedule('window', { start: 12 * 60, end: 20 * 60 }), week[0]) });
+  check('window: labelled first and last meal', window.map(m => m.label).join(',') === 'First meal,Last meal,Snacks', window.map(m => m.label).join(','));
+  const windowLate = planMeals({ day: today, nowMinutes: 20 * 60 + 30, slots: mealSlots(schedule('window', { start: 12 * 60, end: 20 * 60 }), week[0]) });
+  check('window: nothing planned after the window closes', windowLate.every(m => m.state !== 'planned'), windowLate.map(m => `${m.label}:${m.state}`).join(','));
+
+  // Ramadan 2026 begins around Feb 18. Durham sunset that day is about 6:00 pm.
+  const ramadanDay = '2026-02-18';
+  const times = fastingTimes(ramadanDay);
+  check('fasting: sunset in Durham about 6 pm', times.maghrib >= 17 * 60 + 55 && times.maghrib <= 18 * 60 + 5, String(times.maghrib));
+  check('fasting: dawn well before sunrise', times.fajr >= 5 * 60 + 30 && times.fajr <= 6 * 60, String(times.fajr));
+  const summer = fastingTimes('2026-06-21');
+  check('fasting: long summer day', summer.maghrib - summer.fajr > 15 * 60, `${summer.fajr}-${summer.maghrib}`);
+  const ramadan = mealSlots(schedule('ramadan'), ramadanDay);
+  check('fasting: suhoor ends at dawn', ramadan.find(s => s.label === 'Suhoor')!.end === times.fajr);
+  check('fasting: iftar starts at sunset', ramadan.find(s => s.label === 'Iftar')!.start === times.maghrib);
+  const afternoon = planMeals({ day: today, nowMinutes: 15 * 60, slots: ramadan });
+  check('fasting: in the afternoon suhoor has passed', afternoon.find(m => m.label === 'Suhoor')!.state === 'skipped');
+  const iftar = afternoon.find(m => m.label === 'Iftar')!;
+  check('fasting: iftar gets most of the day', iftar.state === 'planned' && iftar.calories >= 0.6 * G, String(iftar.calories));
+  check('fasting: default meal at 3 pm is iftar', mealAt(ramadan, 15 * 60) === 'dinner');
+  check('fasting: default meal at 4 am is suhoor', mealAt(ramadan, 4 * 60 + 30) === 'breakfast');
+  check('standard: default meal mid-morning is breakfast', mealAt(STANDARD, 10 * 60) === 'breakfast');
+  check('standard: default meal at 4:30 pm is a snack', mealAt(STANDARD, 16 * 60 + 30) === 'snack');
+  check('one meal: default meal is the meal', mealAt(mealSlots(schedule('omad'), week[0]), 8 * 60) === 'dinner');
+
+  // A meal logged outside the schedule still shows (a breakfast during Ramadan).
+  const logged = planMeals({ day: today, log: day(week[0], 500, 20, { lunch: { calories: 500, protein: 20, items: 1 } }), nowMinutes: 15 * 60, slots: ramadan });
+  check('fasting: an off-schedule meal still shows', logged.some(m => m.meal === 'lunch' && m.state === 'eaten'));
+}
+
+// 16. Dietary marks.
+{
+  const label = (extra: Partial<{ contains: string[]; diet: string[]; halal: boolean }>) =>
+    ({ name: 'x', serving_size: null, calories: 100, halal: false, last_seen: '2026-10-01', ...extra });
+  const kitchen = { allergen_info: true, diet_info: true };
+  const veg = dietaryOf([label({ diet: ['vegetarian'] }), label({ diet: ['vegan', 'vegetarian'], contains: ['soy'] })], kitchen);
+  check('diet: vegetarian when every part is', veg.vegetarian && !veg.vegan);
+  check('diet: allergens are the union', veg.contains.join(',') === 'soy', veg.contains.join(','));
+  const mixed = dietaryOf([label({ diet: ['vegetarian'] }), label({})], kitchen);
+  check('diet: one unmarked part makes it unknown', !mixed.vegetarian);
+  const vegPrefs: FoodPreferences = { ...NO_PREFERENCES, diet: 'vegetarian' };
+  check('diet: vegetarian dish fits a vegetarian', checkPreferences(veg, vegPrefs).fits);
+  const peanut: FoodPreferences = { ...NO_PREFERENCES, avoid: ['peanut'] };
+  check('allergy: unmarked dish at a kitchen that marks allergens fits', checkPreferences(veg, peanut).fits);
+  const noInfo = dietaryOf([label({})], { allergen_info: false, diet_info: false });
+  const noInfoCheck = checkPreferences(noInfo, peanut);
+  check('allergy: a kitchen without allergen info is never vouched for', !noInfoCheck.fits && noInfoCheck.unknown.includes('allergens'));
+  const soyCheck = checkPreferences(veg, { ...NO_PREFERENCES, avoid: ['soy'] });
+  check('allergy: a marked allergen is a conflict', !soyCheck.fits && soyCheck.conflicts.join() === 'soy');
+  const halalDish = dietaryOf([label({ halal: true }), label({ diet: ['vegetarian'] })], kitchen);
+  check('halal: halal meat with vegetarian sides fits', checkPreferences(halalDish, { ...NO_PREFERENCES, halal: true }).fits);
+  check('halal: unmarked meat does not', !checkPreferences(dietaryOf([label({})], kitchen), { ...NO_PREFERENCES, halal: true }).fits);
+
+  // Labels missing their icons: names add caution, never remove it.
+  const milkFree: FoodPreferences = { ...NO_PREFERENCES, avoid: ['milk'] };
+  const unmarked = (name: string) => dietaryOf([label({ name } as never)], kitchen, false, [name]);
+  for (const name of ['Turkey w Provolone Ciabatta', 'Milk 2% Glass', 'Tuna Melt on Wheat', 'Chicken Alfredo', 'Iced Latte']) {
+    const check1 = checkPreferences(unmarked(name), milkFree);
+    check(`names: "${name}" is not offered to someone avoiding milk`, !check1.fits && check1.possible.includes('milk'), JSON.stringify(check1));
+  }
+  check('names: shrimp means shellfish', unmarked('Blackened Shrimp Tacos').mayContain.includes('shellfish'));
+  check('names: gluten-free bread is not flagged for gluten', !unmarked('Gluten-Free Bread').mayContain.includes('gluten'));
+  const markedVeg = (name: string) => dietaryOf([label({ name, diet: ['vegetarian', 'vegan'] } as never)], kitchen, false, [name]);
+  check('names: a marked-vegetarian chicken dish is not vegetarian', !markedVeg('Chicken Caesar Wrap').vegetarian);
+  check('names: a plant-based burger stays vegetarian', markedVeg('Nadura Vegan Burger on Bun').vegetarian);
+  check('names: a cheese dish marked vegan is not vegan', !markedVeg('Cheese Pizza').vegan);
+  check('names: "Contains: Dairy" in a description means milk',
+    dietaryOf([label({})], kitchen, false, ['Cobb Salad', 'Monterey Jack (GF)(Contains: Dairy Eggs)']).mayContain.includes('milk'));
+  check('names: dairy-free is not flagged for milk', !unmarked('Dairy-Free Chocolate Shake').mayContain.includes('milk'));
+  check('names: vegan cheese is not flagged for milk', !unmarked('Vegan Mac and Cheese').mayContain.includes('milk'));
+  const vegan = dietaryOf([label({ diet: ['vegan', 'vegetarian'] }), label({ diet: ['vegan', 'vegetarian'] })], kitchen, false, ['Nadura Vegan Burger', 'Bacon']);
+  check('names: bacon on a vegan burger is not vegetarian', !vegan.vegetarian);
+  check('names: cheddar added to a vegan burger still flags milk',
+    dietaryOf([label({}), label({})], kitchen, false, ['Vegan Burger', 'Cheddar']).mayContain.includes('milk'));
 }
 
 // 12. Categories.
@@ -201,7 +303,7 @@ const scenarios: { meal: MealType; calories: number; protein: number; date: stri
   { meal: 'snack', calories: 250, protein: 10, date: '2026-10-08', label: 'snack' },
 ];
 for (const s of scenarios) {
-  const window = mealWindow(s.meal, null);
+  const window = mealWindow(slotWindow(s.meal), null);
   const results = recommend({ pool: allFoods, meal: s.meal, calories: s.calories, protein: s.protein, date: s.date, window, familiar, limit: 5 });
   const weekday = new Date(`${s.date}T12:00:00`).getDay();
   check(`${s.label}: at least 3 suggestions`, results.length >= 3, String(results.length));
@@ -228,10 +330,51 @@ for (const s of scenarios) {
     console.log(`  ${r.approx ? '~' : ''}${r.calories} cal ${r.protein} g  ${r.parts.map(p => `${p.name} [${p.restaurantName}]`).join(' + ')}  ${r.tags.join(' ')}`);
   }
 }
-const tiny = recommend({ pool: allFoods, meal: 'snack', calories: 80, protein: 0, date: '2026-10-08', window: mealWindow('snack', null), familiar });
+const tiny = recommend({ pool: allFoods, meal: 'snack', calories: 80, protein: 0, date: '2026-10-08', window: mealWindow(slotWindow('snack'), null), familiar });
 check('tiny budget: no suggestions', tiny.length === 0);
-const lateTonight = recommend({ pool: allFoods, meal: 'dinner', calories: 600, protein: 30, date: '2026-10-07', window: mealWindow('dinner', 21 * 60 + 45), familiar });
+const lateTonight = recommend({ pool: allFoods, meal: 'dinner', calories: 600, protein: 30, date: '2026-10-07', window: mealWindow(slotWindow('dinner'), 21 * 60 + 45), familiar });
 check('late: only places still open', lateTonight.every(r => r.parts.every(p => !p.hoursKnown || !p.restaurantId || openDuring(p.hours, 3, 21 * 60 + 45, 22 * 60 + 45))));
+
+
+// 17. Suggestions respect dietary preferences, using the real menu marks.
+{
+  const menusById = new Map(restaurants.map(r => [r.menu.id, r.menu]));
+  const cases: { label: string; prefs: FoodPreferences; meal: MealType; calories: number }[] = [
+    { label: 'vegetarian lunch', prefs: { ...NO_PREFERENCES, diet: 'vegetarian' }, meal: 'lunch', calories: 650 },
+    { label: 'vegan dinner', prefs: { ...NO_PREFERENCES, diet: 'vegan' }, meal: 'dinner', calories: 600 },
+    { label: 'halal dinner', prefs: { ...NO_PREFERENCES, halal: true }, meal: 'dinner', calories: 700 },
+    { label: 'peanut and milk allergy lunch', prefs: { ...NO_PREFERENCES, avoid: ['peanut', 'milk'] }, meal: 'lunch', calories: 650 },
+  ];
+  for (const c of cases) {
+    const results = recommend({
+      pool: allFoods, meal: c.meal, calories: c.calories, protein: 30, date: '2026-10-07',
+      window: mealWindow(slotWindow(c.meal), null), familiar, limit: 5, prefs: c.prefs,
+    });
+    check(`${c.label}: has suggestions`, results.length >= 2, String(results.length));
+    for (const r of results) {
+      for (const part of r.parts) {
+        if (part.source === 'saved' && !part.restaurantId) continue; // the user's own meal
+        const menu = menusById.get(part.restaurantId!)!;
+        const item = menu.sections.flatMap(sec => sec.items).find(i => i.id === part.itemId)!;
+        const fit = checkPreferences(dishDietary(menu, item), c.prefs);
+        check(`${c.label}: every dish is marked as fitting`, fit.fits, `${part.name} (${part.restaurantName}) ${JSON.stringify(fit)}`);
+      }
+    }
+    console.log(`\n${c.label}:`);
+    for (const r of results) console.log(`  ${r.calories} cal ${r.protein} g  ${r.parts.map(p => `${p.name} [${p.restaurantName}]`).join(' + ')}`);
+  }
+
+  // One meal a day: around 2,000 cal from two dishes at one place.
+  const big = recommend({ pool: allFoods, meal: 'dinner', calories: 2000, protein: 110, date: '2026-10-07', window: { from: 11 * 60, to: 22 * 60 }, familiar, limit: 5 });
+  check('one meal: suggestions for a 2,000 cal meal', big.length >= 3, String(big.length));
+  check('one meal: each lands near 2,000 cal', big.every(r => r.calories >= 1600 && r.calories <= 2240), big.map(r => r.calories).join(','));
+  console.log('\none meal a day (2,000 cal):');
+  for (const r of big) console.log(`  ${r.calories} cal ${r.protein} g  ${r.parts.map(p => `${p.name} [${p.restaurantName}]`).join(' + ')}`);
+
+  // Suhoor picked up the evening before: places open 7 pm - midnight the day before.
+  const suhoor = recommend({ pool: allFoods, meal: 'breakfast', calories: 600, protein: 30, date: '2026-02-17', window: { from: 19 * 60, to: 24 * 60 }, familiar, limit: 4 });
+  check('suhoor: something to pick up the night before', suhoor.length >= 2, String(suhoor.length));
+}
 
 console.log(`\n${passes} checks passed, ${failures.length} failed.`);
 if (failures.length) {

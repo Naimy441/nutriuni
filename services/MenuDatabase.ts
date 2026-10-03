@@ -102,6 +102,41 @@ export function todaysHours(hours: WeeklyHours | undefined, now = new Date()): s
   return today.map(([open, close]) => `${formatClock(open)} – ${formatClock(close)}`).join(', ');
 }
 
+// Dining halls publish free text: "6:30 am - 7:30 am 7:30 am - 11 am Noon - 2 pm".
+// Split it into periods, join back-to-back ones: "6:30 – 11 am · Noon – 2 pm".
+const TIME = /(\d{1,2})(?::(\d{2}))?\s*(am|pm)|noon|midnight/gi;
+export function hoursTextLabel(text: string | undefined): string {
+  if (!text?.trim()) return '';
+  const times = [...text.matchAll(TIME)].map(match => {
+    const word = match[0].toLowerCase();
+    if (word === 'noon') return 12 * 60;
+    if (word === 'midnight') return 24 * 60;
+    const hour = Number(match[1]) % 12 + (match[3].toLowerCase() === 'pm' ? 12 : 0);
+    return hour * 60 + Number(match[2] ?? 0);
+  });
+  if (times.length < 2 || times.length % 2) return text.trim();
+  const periods: [number, number][] = [];
+  for (let i = 0; i < times.length; i += 2) {
+    const last = periods[periods.length - 1];
+    if (last && last[1] === times[i]) last[1] = times[i + 1];
+    else periods.push([times[i], times[i + 1]]);
+  }
+  const clock = (value: number, suffix: boolean) => {
+    if (value === 12 * 60) return 'Noon';
+    if (value === 24 * 60) return 'midnight';
+    const hours = Math.floor(value / 60) % 24;
+    const label = `${hours % 12 || 12}${value % 60 ? `:${String(value % 60).padStart(2, '0')}` : ''}`;
+    return suffix ? `${label} ${hours >= 12 ? 'pm' : 'am'}` : label;
+  };
+  return periods
+    .map(([open, close]) => {
+      // "5 – 9 pm" when both ends share am/pm.
+      const same = open !== 12 * 60 && close !== 12 * 60 && close !== 24 * 60 && (open >= 720) === (close >= 720);
+      return `${clock(open, !same)} – ${clock(close, true)}`;
+    })
+    .join(' · ');
+}
+
 function versionOf(row: Pick<RestaurantSummary, 'hash' | 'icon_hash'>): string {
   return `${row.hash}:${row.icon_hash ?? ''}`;
 }

@@ -3,6 +3,7 @@
 import { formatNumber } from '@/constants/nutrients';
 import { radius, shadow, space, useTheme } from '@/constants/theme';
 import { calculateGoals, goalsStore, WEIGHT_GOALS } from '@/services/goals';
+import { preferencesStore, usePreferences } from '@/services/preferences';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import React, { useRef, useState } from 'react';
@@ -12,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ActivityPicker, BodyFields, DraftErrors, GoalPicker, profileFromDraft, ProfileDraft, SexPicker, validateDraft,
 } from './ProfileFields';
+import { AllergyFields, DietaryDisclaimer, DietFields, ScheduleFields } from './PreferenceFields';
 import { AnimatedNumber } from './ui/AnimatedNumber';
 import { AppText } from './ui/AppText';
 import { Button } from './ui/Button';
@@ -19,14 +21,16 @@ import { IconButton } from './ui/IconButton';
 import { ProgressBar } from './ui/ProgressBar';
 import { ProgressRing } from './ui/ProgressRing';
 
-type Step = 'welcome' | 'goal' | 'sex' | 'body' | 'activity' | 'plan';
-const STEPS: Step[] = ['welcome', 'goal', 'sex', 'body', 'activity', 'plan'];
+type Step = 'welcome' | 'goal' | 'sex' | 'body' | 'activity' | 'schedule' | 'diet' | 'plan';
+const STEPS: Step[] = ['welcome', 'goal', 'sex', 'body', 'activity', 'schedule', 'diet', 'plan'];
 
 const STEP_TEXT: Partial<Record<Step, { title: string; subtitle: string }>> = {
   goal: { title: 'What’s your goal?', subtitle: 'We’ll set your daily calories and macros around it.' },
   sex: { title: 'Sex', subtitle: 'The standard formula for daily energy needs differs by sex.' },
   body: { title: 'About you', subtitle: 'Used only to calculate your targets. It stays on your phone.' },
   activity: { title: 'How active are you?', subtitle: 'Count workouts and walking around campus.' },
+  schedule: { title: 'How do you eat?', subtitle: 'Your meals and plan follow this. You can change it anytime.' },
+  diet: { title: 'Any dietary needs?', subtitle: 'Optional. Suggestions will only include dishes marked as fitting.' },
 };
 
 const STEP_FIELDS: Partial<Record<Step, (keyof DraftErrors)[]>> = {
@@ -51,6 +55,7 @@ export function OnboardingScreen() {
   const [attempted, setAttempted] = useState<Set<Step>>(new Set());
   const [saving, setSaving] = useState(false);
   const step = STEPS[index];
+  const prefs = usePreferences();
   const update = (patch: Partial<ProfileDraft>) => setDraft(prev => ({ ...prev, ...patch }));
 
   const allErrors = validateDraft(draft);
@@ -160,6 +165,19 @@ export function OnboardingScreen() {
           {step === 'sex' && <SexPicker value={draft.gender} onChange={gender => choose({ gender })} />}
           {step === 'body' && <BodyFields draft={draft} onChange={update} errors={shownErrors} />}
           {step === 'activity' && <ActivityPicker value={draft.activityLevel} onChange={activityLevel => choose({ activityLevel })} />}
+          {step === 'schedule' && (
+            <ScheduleFields value={prefs.schedule} onChange={patch => preferencesStore.update({ schedule: patch })} />
+          )}
+          {step === 'diet' && (
+            <View style={styles.dietStep}>
+              <DietFields value={prefs.food} onChange={patch => preferencesStore.update({ food: patch })} />
+              <View style={styles.allergies}>
+                <AppText variant="headline">Allergies</AppText>
+                <AllergyFields value={prefs.food.avoid} onChange={avoid => preferencesStore.update({ food: { avoid } })} />
+              </View>
+              <DietaryDisclaimer />
+            </View>
+          )}
           {step === 'plan' && <PlanReveal draft={draft} />}
           {Object.values(shownErrors).length > 0 && step !== 'body' && (
             <AppText variant="footnote" tone="danger">{Object.values(shownErrors)[0]}</AppText>
@@ -298,6 +316,12 @@ const styles = StyleSheet.create({
   },
   plan: {
     gap: space.xl,
+  },
+  dietStep: {
+    gap: space.xl,
+  },
+  allergies: {
+    gap: space.sm,
   },
   planRing: {
     alignItems: 'center',

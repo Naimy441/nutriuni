@@ -7,9 +7,11 @@ import { IconButton } from '@/components/ui/IconButton';
 import { SearchField } from '@/components/ui/SearchField';
 import { radius, space, useTheme } from '@/constants/theme';
 import { useQuickAdd } from '@/hooks/useQuickAdd';
-import { menuDatabase, openStatus, todaysHours, useClock, useMenuRevision } from '@/services/MenuDatabase';
+import { hoursTextLabel, menuDatabase, openStatus, todaysHours, useClock, useMenuRevision } from '@/services/MenuDatabase';
 import { describePreview } from '@/services/menuNutrition';
 import type { MenuItem, MenuSection, RestaurantMenu } from '@/services/menuTypes';
+import { checkPreferences, dishDietary, hasPreferences, preferencesLabel } from '@/services/dietary';
+import { usePreferences } from '@/services/preferences';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, SectionList, StyleSheet, View } from 'react-native';
@@ -36,6 +38,17 @@ export default function RestaurantPage() {
   const search = useDeferredValue(query.trim().toLowerCase());
   const [activeSection, setActiveSection] = useState(ALL);
   const [onlyWithNutrition, setOnlyWithNutrition] = useState(false);
+  const { food } = usePreferences();
+  const filtering = hasPreferences(food);
+  // Can this kitchen's icons answer the user's preferences at all?
+  const missing = menu
+    ? [
+        (food.diet !== 'none') && !menu.diet_info ? (food.diet === 'vegan' ? 'vegan' : 'vegetarian') + ' dishes' : null,
+        food.avoid.length > 0 && !menu.allergen_info ? 'allergens' : null,
+      ].filter(Boolean) as string[]
+    : [];
+  const [fitsOnly, setFitsOnly] = useState(true);
+  const applyFits = filtering && fitsOnly && missing.length === 0;
   // The open sheet keeps the menu it was opened from, even if newer data arrives.
   const [selected, setSelected] = useState<{ menu: RestaurantMenu; item: MenuItem } | null>(null);
   const { quickAdd, addingId } = useQuickAdd((m, item) => setSelected({ menu: m, item }));
@@ -48,6 +61,14 @@ export default function RestaurantPage() {
     const target = menu.sections.flatMap(s => s.items).find(i => i.id === itemParam);
     if (target) setSelected({ menu, item: target });
   }, [menu, itemParam]);
+
+  const fits = useMemo(() => {
+    const map = new Map<MenuItem, boolean>();
+    if (menu && filtering) {
+      menu.sections.forEach(section => section.items.forEach(item => map.set(item, checkPreferences(dishDietary(menu, item), food).fits)));
+    }
+    return map;
+  }, [menu, filtering, food]);
 
   const previews = useMemo(() => {
     const map = new Map<MenuItem, ReturnType<typeof describePreview>>();
@@ -63,12 +84,13 @@ export default function RestaurantPage() {
         ...section,
         data: section.items.filter(item => {
           if (onlyWithNutrition && previews.get(item)?.kind === 'none') return false;
+          if (applyFits && !fits.get(item)) return false;
           if (!search) return true;
           return item.name.toLowerCase().includes(search) || (item.description ?? '').toLowerCase().includes(search);
         }),
       }))
       .filter(section => section.data.length > 0);
-  }, [menu, search, activeSection, onlyWithNutrition, previews]);
+  }, [menu, search, activeSection, onlyWithNutrition, previews, applyFits, fits]);
 
   const back = () => (router.canGoBack() ? router.back() : router.replace('/menus'));
 
@@ -84,7 +106,7 @@ export default function RestaurantPage() {
   }
 
   const status = menu.hours ? openStatus(menu.hours, now) : null;
-  const hoursLine = menu.hours ? todaysHours(menu.hours, now) : menu.hours_text;
+  const hoursLine = menu.hours ? todaysHours(menu.hours, now) : hoursTextLabel(menu.hours_text);
 
   const renderItem = ({ item, index, section }: { item: MenuItem; index: number; section: { data: MenuItem[] } }) => (
     <View
@@ -97,6 +119,8 @@ export default function RestaurantPage() {
     >
       <DishRow
         item={item}
+        menu={menu}
+        dietFiltered={applyFits}
         preview={previews.get(item) ?? { kind: 'none' }}
         onPress={() => setSelected({ menu, item })}
         onQuickAdd={() => quickAdd(menu, item)}
@@ -124,10 +148,18 @@ export default function RestaurantPage() {
             {menu.stats.with_nutrition === 0 && (
               <AppText variant="caption" tone="tertiary">No nutrition info · you can enter your own</AppText>
             )}
+            {filtering && missing.length > 0 && (
+              <AppText variant="caption" tone="warning" numberOfLines={2}>
+                This kitchen doesn&apos;t mark {missing.join(' or ')}. Ask staff.
+              </AppText>
+            )}
           </View>
         </View>
         <SearchField value={query} onChangeText={setQuery} placeholder={`Search ${menu.name}`} />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+          {filtering && missing.length === 0 && (
+            <Chip label={preferencesLabel(food)} icon="leaf-outline" selected={fitsOnly} onPress={() => setFitsOnly(v => !v)} />
+          )}
           {menu.stats.with_nutrition > 0 && menu.stats.with_nutrition < menu.stats.items && (
             <Chip label="With nutrition" icon="nutrition-outline" selected={onlyWithNutrition} onPress={() => setOnlyWithNutrition(v => !v)} />
           )}
@@ -152,7 +184,9 @@ export default function RestaurantPage() {
         keyboardDismissMode="on-drag"
         contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + space.huge }]}
         ListEmptyComponent={
-          <EmptyState icon="search" title="No dishes match" message="Try another search or clear the filters." compact />
+          applyFits && !search
+            ? <EmptyState icon="leaf-outline" title="Nothing marked for you here" message={`No dishes here are marked ${preferencesLabel(food).toLowerCase()}. Turn off the filter to see everything.`} compact />
+            : <EmptyState icon="search" title="No dishes match" message="Try another search or clear the filters." compact />
         }
         ListFooterComponent={
           <AppText variant="caption" tone="tertiary" align="center" style={styles.footerNote}>
