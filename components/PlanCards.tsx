@@ -31,7 +31,8 @@ export function WeekCard({ plan, onPress, title = 'This week' }: { plan: WeekPla
       accessibilityLabel={`${title}: ${formatNumber(plan.eaten.calories)} of ${formatNumber(plan.weekly.calories)} calories. ${message.text}`}
     >
       <View style={styles.rowBetween}>
-        <AppText variant="headline">{title}</AppText>
+        {/* flex: Android measures this a little narrow in a row and wraps the last word out of sight. */}
+        <AppText variant="headline" style={styles.flex}>{title}</AppText>
         {onPress && (
           <View style={styles.link}>
             <AppText variant="subhead" weight="600" tone="brand">Meal plan</AppText>
