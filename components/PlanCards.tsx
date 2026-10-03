@@ -8,12 +8,12 @@ import { weekMessage } from '@/services/planner';
 import { hasPreferences } from '@/services/dietary';
 import { usePreferences } from '@/services/preferences';
 import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
+import React, { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { AppText } from './ui/AppText';
 import { Card } from './ui/Card';
-import { PressableScale } from './ui/PressableScale';
+import { PressableScale, triggerHaptic } from './ui/PressableScale';
 import { ProgressBar } from './ui/ProgressBar';
 
 const CHART_HEIGHT = 56;
@@ -98,11 +98,12 @@ function Budget({ label, value, total, unit, color }: { label: string; value: nu
 const SIZE_TEXT = { lighter: 'Lighter', bigger: 'Bigger', usual: '' } as const;
 
 export function MealPlanCard({
-  target, suggestions, onOpen, onLog, loggingKey, footer, showHeader = true,
+  target, suggestions, onOpen, onLog, loggingKey, footer, showHeader = true, pageSize,
 }: {
   showHeader?: boolean; // off where the meal is already shown above the card
   target: MealTarget;
   suggestions: Suggestion[];
+  pageSize?: number; // show this many at first, and this many more per tap
   onOpen: (suggestion: Suggestion, part: FoodOption) => void;
   onLog: (suggestion: Suggestion) => void;
   loggingKey?: string | null;
@@ -111,6 +112,9 @@ export function MealPlanCard({
   const theme = useTheme();
   const size = SIZE_TEXT[target.size];
   const { food } = usePreferences();
+  const [shown, setShown] = useState(pageSize ?? Infinity);
+  const visible = suggestions.slice(0, shown);
+  const remaining = suggestions.length - visible.length;
   return (
     <Card padded={false} style={styles.mealCard}>
       {showHeader && (
@@ -140,16 +144,36 @@ export function MealPlanCard({
       {target.state === 'planned' && (
         suggestions.length ? (
           <Animated.View entering={FadeIn.duration(200)}>
-            {suggestions.map((suggestion, index) => (
-              <SuggestionRow
-                key={suggestion.key}
-                divider={showHeader || index > 0}
-                suggestion={suggestion}
-                onOpen={onOpen}
-                onLog={onLog}
-                logging={loggingKey === suggestion.key}
-              />
+            {visible.map((suggestion, index) => (
+              <Animated.View key={suggestion.key} entering={index >= (pageSize ?? Infinity) ? FadeIn.duration(200) : undefined}>
+                <SuggestionRow
+                  divider={showHeader || index > 0}
+                  suggestion={suggestion}
+                  onOpen={onOpen}
+                  onLog={onLog}
+                  logging={loggingKey === suggestion.key}
+                />
+              </Animated.View>
             ))}
+            {pageSize && (remaining > 0 || shown > pageSize) ? (
+              <Pressable
+                onPress={() => {
+                  triggerHaptic('selection');
+                  setShown(remaining > 0 ? shown + pageSize : pageSize);
+                }}
+                style={({ pressed }) => [styles.more, { borderTopColor: theme.separator }, pressed && { backgroundColor: theme.fill }]}
+                accessibilityRole="button"
+                accessibilityLabel={remaining > 0 ? `Show more ${target.label.toLowerCase()} options, ${remaining} left` : 'Show fewer options'}
+              >
+                <AppText variant="subhead" weight="600" tone="brand">
+                  {remaining > 0 ? `Show ${Math.min(pageSize, remaining)} more` : 'Show fewer'}
+                </AppText>
+                {remaining > 0 && (
+                  <AppText variant="footnote" tone="tertiary" numeric>{remaining} left</AppText>
+                )}
+                <Ionicons name={remaining > 0 ? 'chevron-down' : 'chevron-up'} size={16} color={theme.brandText} />
+              </Pressable>
+            ) : null}
           </Animated.View>
         ) : (
           <View style={[styles.emptyRow, showHeader && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.separator }]}>
@@ -330,6 +354,14 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  more: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: space.sm,
+    paddingVertical: space.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   emptyRow: {
     paddingHorizontal: space.lg,

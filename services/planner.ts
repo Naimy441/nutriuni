@@ -700,11 +700,12 @@ export function recommend(input: {
 
   candidates.sort((a, b) => a.score - b.score);
 
-  // Varied picks: no repeated dish, one per restaurant first, then fill.
+  // Varied picks: no repeated dish, one per restaurant first, then two, then
+  // anything left (a long list to browse, or only one place open).
   const picked: Suggestion[] = [];
   const usedNames = new Set<string>();
   const usedPlaces = new Map<string, number>();
-  for (const maxPerPlace of [1, 2]) {
+  for (const maxPerPlace of [1, 2, Infinity]) {
     for (const candidate of candidates) {
       if (picked.length >= limit) break;
       if (picked.includes(candidate)) continue;

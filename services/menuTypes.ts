@@ -15,11 +15,15 @@ export interface FoodLabel {
   trans_fat?: number;
   cholesterol?: number;
   added_sugar?: number;
+  calcium?: number; // mg
+  iron?: number; // mg
+  potassium?: number; // mg
   halal: boolean;
   // NetNutrition icons. Empty or missing means nothing is marked, not that
   // the food is free of it (see RestaurantMenu.allergen_info / diet_info).
   contains?: string[]; // allergen codes: milk, egg, wheat, gluten, soy, peanut, tree_nut, fish, shellfish, sesame
   diet?: string[]; // vegetarian, vegan (vegan implies vegetarian)
+  ingredients?: string;
   last_seen: string;
 }
 

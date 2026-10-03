@@ -148,7 +148,7 @@ export default function ProfileScreen() {
           </View>
         </ListGroup>
 
-        <ListGroup title="Dining data" footer="Menus refresh automatically a few times a day.">
+        <ListGroup title="Dining data">
           <ListRow
             icon="refresh-outline"
             title="Check for new menus"

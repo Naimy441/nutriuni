@@ -24,8 +24,8 @@ export interface TrackedSelection {
 }
 
 const STATUS_NOTES: Partial<Record<NonNullable<TrackedItem['nutrition_status']>, { icon: React.ComponentProps<typeof Ionicons>['name']; text: string }>> = {
-  estimated: { icon: 'calculator-outline', text: 'Estimated by adding up Duke NetNutrition labels for each part.' },
-  partial: { icon: 'alert-circle-outline', text: "Some choices had no published label and aren't counted." },
+  estimated: { icon: 'calculator-outline', text: 'Estimated by adding up each part of your order.' },
+  partial: { icon: 'alert-circle-outline', text: "Some choices have no nutrition info and aren't counted." },
   manual: { icon: 'create-outline', text: 'Nutrition entered by you.' },
   none: { icon: 'information-circle-outline', text: 'Logged without nutrition. It counts toward your meals but not your totals.' },
 };

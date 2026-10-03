@@ -26,7 +26,7 @@ const STEPS: Step[] = ['welcome', 'goal', 'sex', 'body', 'activity', 'schedule',
 
 const STEP_TEXT: Partial<Record<Step, { title: string; subtitle: string }>> = {
   goal: { title: 'What’s your goal?', subtitle: 'We’ll set your daily calories and macros around it.' },
-  sex: { title: 'Sex', subtitle: 'The standard formula for daily energy needs differs by sex.' },
+  sex: { title: 'Sex', subtitle: 'Used to calculate how much energy you need each day.' },
   body: { title: 'About you', subtitle: 'Used only to calculate your targets. It stays on your phone.' },
   activity: { title: 'How active are you?', subtitle: 'Count workouts and walking around campus.' },
   schedule: { title: 'How do you eat?', subtitle: 'Your meals and plan follow this. You can change it anytime.' },
@@ -41,7 +41,7 @@ const STEP_FIELDS: Partial<Record<Step, (keyof DraftErrors)[]>> = {
 };
 
 const VALUE_PROPS: { icon: React.ComponentProps<typeof Ionicons>['name']; title: string; body: string }[] = [
-  { icon: 'restaurant', title: 'Every Duke dining menu', body: 'With nutrition from Duke NetNutrition, updated daily.' },
+  { icon: 'restaurant', title: 'Every Duke dining menu', body: 'Calories and macros built in, updated daily.' },
   { icon: 'options', title: 'Build your order', body: 'Pick sides and toppings and watch calories update live.' },
   { icon: 'flash', title: 'Log in one tap', body: 'Recents, saved meals and a clear calories-left number.' },
 ];

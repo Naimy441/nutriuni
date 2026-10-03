@@ -75,7 +75,7 @@ export default function PlanScreen() {
         <View style={styles.section}>
           {meals.map(target => (
             <MealSuggestions
-              key={target.meal}
+              key={`${date}-${target.meal}`}
               date={date}
               target={target}
               onOpen={(found) => setSheet({ ...found, meal: target.meal })}
@@ -115,7 +115,7 @@ export default function PlanScreen() {
               <Explainer icon="swap-vertical-outline" text="Go over one day and the days after get a little lighter; come in under and they get a little more. Each day's target is set before it starts, so it doesn't move while you eat." />
               <Explainer icon="shield-checkmark-outline" text={`No day is planned more than ${Math.round(PLANNER.maxDecrease * 100)}% below or ${Math.round(PLANNER.maxIncrease * 100)}% above your daily target, or under a safe minimum, so you never have to starve or stuff yourself to catch up. Meals keep a sensible minimum too.`} />
               <Explainer icon="help-circle-outline" text="Days you didn't log, or only partly logged, count as on target, so a forgotten log never turns into extra food." />
-              <Explainer icon="restaurant-outline" text="Suggestions only use dishes with published Duke NetNutrition labels and meals you've saved, from places open at that meal." />
+              <Explainer icon="restaurant-outline" text="Suggestions come from dishes with nutrition info and your saved meals, at places open for that meal." />
             </Animated.View>
           )}
         </Card>
@@ -133,12 +133,15 @@ export default function PlanScreen() {
   );
 }
 
+// Ranked best first; the card shows the top few and pages through the rest.
+const MAX_SUGGESTIONS = 30;
+
 function MealSuggestions({ date, target, onOpen }: {
   date: string;
   target: MealTarget;
   onOpen: (found: { menu: RestaurantMenu; item: MenuItem }) => void;
 }) {
-  const suggestions = useSuggestions(date, target, 4);
+  const suggestions = useSuggestions(date, target, MAX_SUGGESTIONS);
   const logSuggestion = useLogSuggestion();
   const [logging, setLogging] = useState<string | null>(null);
   const log = async (suggestion: Suggestion) => {
@@ -153,6 +156,7 @@ function MealSuggestions({ date, target, onOpen }: {
     <MealPlanCard
       target={target}
       suggestions={suggestions}
+      pageSize={4}
       loggingKey={logging}
       onLog={log}
       onOpen={(_, part) => {

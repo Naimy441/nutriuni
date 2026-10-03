@@ -38,7 +38,7 @@ export default function ProfileEditScreen() {
         <Section title="Goal" error={errors.goal}>
           <GoalPicker value={draft.goal} onChange={goal => update({ goal })} />
         </Section>
-        <Section title="Sex" subtitle="Used in the standard metabolic rate formula." error={errors.gender}>
+        <Section title="Sex" subtitle="Used to calculate how much energy you need each day." error={errors.gender}>
           <SexPicker value={draft.gender} onChange={gender => update({ gender })} />
         </Section>
         <Section title="Body">

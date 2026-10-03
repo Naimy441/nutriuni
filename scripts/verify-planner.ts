@@ -335,6 +335,16 @@ check('tiny budget: no suggestions', tiny.length === 0);
 const lateTonight = recommend({ pool: allFoods, meal: 'dinner', calories: 600, protein: 30, date: '2026-10-07', window: mealWindow(slotWindow('dinner'), 21 * 60 + 45), familiar });
 check('late: only places still open', lateTonight.every(r => r.parts.every(p => !p.hoursKnown || !p.restaurantId || openDuring(p.hours, 3, 21 * 60 + 45, 22 * 60 + 45))));
 
+// A long list to browse: the top picks don't change, and nothing repeats.
+{
+  const args = { pool: allFoods, meal: 'lunch' as MealType, calories: 700, protein: 40, date: '2026-10-07', window: mealWindow(slotWindow('lunch'), null), familiar };
+  const top = recommend({ ...args, limit: 4 });
+  const long = recommend({ ...args, limit: 30 });
+  check('browse: many more than the top 4', long.length >= 12, String(long.length));
+  check('browse: starts with the same top 4', top.every((r, i) => long[i]?.key === r.key));
+  check('browse: no dish repeats', new Set(long.flatMap(r => r.parts.map(p => p.name.toLowerCase()))).size === long.reduce((n, r) => n + r.parts.length, 0));
+}
+
 
 // 17. Suggestions respect dietary preferences, using the real menu marks.
 {

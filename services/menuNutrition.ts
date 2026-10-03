@@ -6,6 +6,7 @@ import type { FoodLabel, MenuItem, OptionGroup, RestaurantMenu } from './menuTyp
 export const NUTRIENT_KEYS = [
   'calories', 'protein', 'carbs', 'fat', 'fiber', 'sugar', 'sodium',
   'saturated_fat', 'trans_fat', 'cholesterol', 'added_sugar',
+  'calcium', 'iron', 'potassium',
 ] as const;
 export type NutrientKey = (typeof NUTRIENT_KEYS)[number];
 export type NutritionTotals = Record<NutrientKey, number>;
@@ -28,6 +29,8 @@ export interface NutritionResult {
   // size changes the labels can't reflect.
   estimated: boolean;
   missing: string[];
+  // Nutrients some part's label doesn't list, so the total isn't known.
+  unknown: NutrientKey[];
   parts: NutritionPart[];
   base: FoodLabel | null;
 }
@@ -204,7 +207,7 @@ export function computeNutrition(
 
   const hasSource = Boolean(base || item.components?.length || (item.composed && parts.length));
   if (!hasSource) {
-    return { status: 'none', totals: null, estimated: false, missing, parts: [], base: null };
+    return { status: 'none', totals: null, estimated: false, missing, unknown: [], parts: [], base: null };
   }
   const totals = emptyTotals();
   for (const part of parts) {
@@ -213,10 +216,13 @@ export function computeNutrition(
     }
   }
   for (const key of NUTRIENT_KEYS) {
-    totals[key] = round(Math.max(0, totals[key] * servings), key === 'calories' || key === 'sodium' || key === 'cholesterol' ? 0 : 1);
+    totals[key] = round(Math.max(0, totals[key] * servings), WHOLE_NUMBERS.has(key) ? 0 : 1);
   }
-  return { status: missing.length ? 'partial' : 'complete', totals, estimated, missing, parts, base };
+  const unknown = NUTRIENT_KEYS.filter(key => parts.some(part => part.sign > 0 && part.label[key] === undefined));
+  return { status: missing.length ? 'partial' : 'complete', totals, estimated, missing, unknown, parts, base };
 }
+
+const WHOLE_NUMBERS = new Set<NutrientKey>(['calories', 'sodium', 'cholesterol', 'calcium', 'potassium']);
 
 function round(value: number, digits: number): number {
   const factor = 10 ** digits;

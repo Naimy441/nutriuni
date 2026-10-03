@@ -17,7 +17,7 @@ export interface NutrientInfo {
 export const NUTRIENTS: Record<TrackedNutrient, NutrientInfo> = {
   calories: {
     key: 'calories', label: 'Calories', unit: 'cal', kind: 'budget',
-    about: 'Energy from food. Your daily target comes from your details and goal (Mifflin-St Jeor × activity).',
+    about: 'Energy from food. Your daily target comes from your details, activity and goal.',
   },
   protein: {
     key: 'protein', label: 'Protein', unit: 'g', kind: 'target',
@@ -37,7 +37,7 @@ export const NUTRIENTS: Record<TrackedNutrient, NutrientInfo> = {
   },
   sugar: {
     key: 'sugar', label: 'Sugar', unit: 'g', kind: 'limit',
-    about: 'Total sugars from menu labels. The limit follows American Heart Association advice on added sugar.',
+    about: 'Natural and added sugar together. The limit follows American Heart Association advice.',
   },
   sodium: {
     key: 'sodium', label: 'Sodium', unit: 'mg', kind: 'limit',

@@ -141,8 +141,8 @@ export function AllergyFields({ value, onChange }: { value: Allergen[]; onChange
 export function DietaryDisclaimer() {
   return (
     <AppText variant="caption" tone="tertiary">
-      Based on the icons Duke NetNutrition shows on each label. Some kitchens don&apos;t publish them, unmarked doesn&apos;t mean
-      free of an allergen, and cross-contact is always possible. With a serious allergy, confirm with dining staff before you eat.
+      Allergen and diet info isn&apos;t available for every dish, and cross-contact is always possible. With a serious allergy,
+      check with dining staff before you eat.
     </AppText>
   );
 }

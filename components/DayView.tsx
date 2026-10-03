@@ -123,7 +123,7 @@ export function DayView({ date, today, header, bottomPadding }: DayViewProps) {
 
         <Pressable onPress={() => router.push('/sources')} accessibilityRole="link" style={styles.footer}>
           <AppText variant="caption" tone="tertiary" align="center">
-            Nutrition from Duke NetNutrition labels. Estimates, not medical advice.{' '}
+            Nutrition is an estimate, not medical advice.{' '}
             <AppText variant="caption" tone="brand" weight="600">Sources</AppText>
           </AppText>
         </Pressable>

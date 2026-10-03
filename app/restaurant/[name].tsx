@@ -43,8 +43,8 @@ export default function RestaurantPage() {
   // Can this kitchen's icons answer the user's preferences at all?
   const missing = menu
     ? [
-        (food.diet !== 'none') && !menu.diet_info ? (food.diet === 'vegan' ? 'vegan' : 'vegetarian') + ' dishes' : null,
-        food.avoid.length > 0 && !menu.allergen_info ? 'allergens' : null,
+        (food.diet !== 'none') && !menu.diet_info ? (food.diet === 'vegan' ? 'vegan' : 'vegetarian') : null,
+        food.avoid.length > 0 && !menu.allergen_info ? 'allergen' : null,
       ].filter(Boolean) as string[]
     : [];
   const [fitsOnly, setFitsOnly] = useState(true);
@@ -150,7 +150,7 @@ export default function RestaurantPage() {
             )}
             {filtering && missing.length > 0 && (
               <AppText variant="caption" tone="warning" numberOfLines={2}>
-                This kitchen doesn&apos;t mark {missing.join(' or ')}. Ask staff.
+                No {missing.join(' or ')} info here. Ask staff.
               </AppText>
             )}
           </View>
@@ -189,13 +189,11 @@ export default function RestaurantPage() {
             : <EmptyState icon="search" title="No dishes match" message="Try another search or clear the filters." compact />
         }
         ListFooterComponent={
-          <AppText variant="caption" tone="tertiary" align="center" style={styles.footerNote}>
-            {summary?.source === 'netnutrition'
-              ? "This dining hall isn't on Mobile Order, so its menu lists everything Duke NetNutrition has published for it."
-              : menu.nutrition_sources.length
-                ? 'Menu from Mobile Order. Nutrition from Duke NetNutrition labels, matched to each dish and option.'
-                : 'Menu from Mobile Order.'}
-          </AppText>
+          summary?.source === 'netnutrition' ? (
+            <AppText variant="caption" tone="tertiary" align="center" style={styles.footerNote}>
+              Not every dish here is served every day.
+            </AppText>
+          ) : null
         }
       />
 

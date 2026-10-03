@@ -19,6 +19,9 @@ import 'react-native-reanimated';
 // frame is the right screen instead of a flash of the wrong one.
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
+// A screen opened from a link still has the tabs beneath it to go back to.
+export const unstable_settings = { initialRouteName: '(tabs)' };
+
 function navigationTheme(theme: Theme) {
   const base = theme.scheme === 'dark' ? DarkTheme : DefaultTheme;
   return {

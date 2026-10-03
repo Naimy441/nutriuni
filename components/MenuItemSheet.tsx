@@ -7,20 +7,22 @@ import { MealType } from '@/services/meals';
 import { currentMeal, useMealLabel, usePreferences } from '@/services/preferences';
 import { ManualNutrition, trackedEntryFromOrder } from '@/services/menuLogging';
 import {
-  computeNutrition, defaultSelection, groupMax, hasNutritionSource, isSingleChoice, NutrientKey,
+  computeNutrition, defaultSelection, groupMax, hasNutritionSource, isSingleChoice,
   Selection, selectedCount, setValueQuantity, toggleValue, unmetChoices,
 } from '@/services/menuNutrition';
 import type { FoodLabel, MenuItem, OptionGroup, OptionValue, RestaurantMenu } from '@/services/menuTypes';
 import { nutritionTracker, TrackedItem, useToday } from '@/services/NutritionTracker';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  BottomSheetFooter, BottomSheetFooterProps, BottomSheetScrollView, BottomSheetTextInput,
+  BottomSheetBackgroundProps, BottomSheetFooter, BottomSheetFooterProps, BottomSheetHandleProps, BottomSheetScrollView,
+  BottomSheetTextInput,
 } from '@gorhom/bottom-sheet';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import Animated, { Extrapolation, FadeIn, interpolate, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MealPicker, useMealOptions } from './MealPicker';
+import { IngredientList, NutritionLabel } from './NutritionLabel';
 import { AnimatedNumber } from './ui/AnimatedNumber';
 import { AppText } from './ui/AppText';
 import { Button } from './ui/Button';
@@ -47,16 +49,6 @@ const MANUAL_FIELDS: { key: keyof ManualNutrition; label: string; unit: string }
   { key: 'fiber', label: 'Fiber', unit: 'g' },
   { key: 'sugar', label: 'Sugar', unit: 'g' },
   { key: 'sodium', label: 'Sodium', unit: 'mg' },
-];
-
-const DETAIL_ROWS: { key: NutrientKey; label: string; unit: string }[] = [
-  { key: 'saturated_fat', label: 'Saturated fat', unit: 'g' },
-  { key: 'trans_fat', label: 'Trans fat', unit: 'g' },
-  { key: 'cholesterol', label: 'Cholesterol', unit: 'mg' },
-  { key: 'sodium', label: 'Sodium', unit: 'mg' },
-  { key: 'fiber', label: 'Dietary fiber', unit: 'g' },
-  { key: 'sugar', label: 'Total sugars', unit: 'g' },
-  { key: 'added_sugar', label: 'Added sugars', unit: 'g' },
 ];
 
 const EMPTY_MANUAL: Record<keyof ManualNutrition, string> = {
@@ -93,7 +85,12 @@ export function MenuItemSheet({ menu, item, onClose, onLogged, date, meal: initi
   const toast = useToast();
   const today = useToday();
   const sheetRef = useRef<SheetRef>(null);
-  const snapPoints = useMemo(() => ['92%'], []);
+  // Scrolling the dish up past the top grows the sheet to full screen.
+  const snapPoints = useMemo(() => ['92%', '100%'], []);
+  const animatedIndex = useSharedValue(0);
+  const headerStyle = useAnimatedStyle(() => ({
+    paddingTop: space.xs + interpolate(animatedIndex.value, [0, 1], [0, Math.max(0, insets.top - HANDLE_HEIGHT)], Extrapolation.CLAMP),
+  }));
 
   const [selection, setSelection] = useState<Selection>([]);
   const [servings, setServings] = useState(1);
@@ -269,6 +266,8 @@ export function MenuItemSheet({ menu, item, onClose, onLogged, date, meal: initi
 
     const totals = result.totals;
     const approx = result.estimated || result.status === 'partial';
+    const singleLabel = Boolean(result.base) && result.parts.length === 1 && !item.components?.length;
+    const hasIngredients = result.parts.some(part => part.sign > 0 && part.label.ingredients);
     return (
       <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
         <View style={styles.caloriesRow}>
@@ -293,15 +292,15 @@ export function MenuItemSheet({ menu, item, onClose, onLogged, date, meal: initi
         </View>
 
         {result.status === 'partial' && (
-          <Note icon="alert-circle-outline" color={theme.warning}>Not counted (no label): {result.missing.join(', ')}</Note>
+          <Note icon="alert-circle-outline" color={theme.warning}>Not counted, no nutrition info: {result.missing.join(', ')}</Note>
         )}
         {result.estimated && (
           <Note icon="calculator-outline" color={theme.brandText}>
-            Estimated by adding up {result.parts.length} NetNutrition label{result.parts.length === 1 ? '' : 's'}
+            Estimated by adding up each part of your order
           </Note>
         )}
         {stale && lastSeen && (
-          <Note icon="time-outline" color={theme.warning}>Some labels were last published in {monthYear(lastSeen)}</Note>
+          <Note icon="time-outline" color={theme.warning}>Some nutrition info is from {monthYear(lastSeen)} and may have changed</Note>
         )}
 
         <Pressable
@@ -313,18 +312,15 @@ export function MenuItemSheet({ menu, item, onClose, onLogged, date, meal: initi
           accessibilityRole="button"
           accessibilityState={{ expanded: showBreakdown }}
         >
-          <AppText variant="subhead" weight="600" tone="brand">{showBreakdown ? 'Hide details' : 'Full nutrition'}</AppText>
+          <AppText variant="subhead" weight="600" tone="brand">
+            {showBreakdown ? 'Hide nutrition facts' : hasIngredients ? 'Nutrition facts & ingredients' : 'Nutrition facts'}
+          </AppText>
           <Ionicons name={showBreakdown ? 'chevron-up' : 'chevron-down'} size={16} color={theme.brandText} />
         </Pressable>
         {showBreakdown && (
           <Animated.View entering={FadeIn.duration(200)} style={styles.breakdown}>
-            {result.base && !item.components?.length && (
-              <AppText variant="footnote" tone="tertiary" style={styles.labelLine}>
-                NetNutrition label: {result.base.name}{result.base.serving_size ? ` · ${result.base.serving_size}` : ''}
-              </AppText>
-            )}
             {result.parts.length > 1 && (
-              <View style={[styles.breakdownBlock, { borderBottomColor: theme.separator }]}>
+              <View style={styles.parts}>
                 {result.parts.map((part, index) => (
                   <View key={`${part.name}-${index}`} style={styles.detailRow}>
                     <AppText variant="footnote" tone="secondary" numberOfLines={1} style={styles.flex}>
@@ -337,12 +333,14 @@ export function MenuItemSheet({ menu, item, onClose, onLogged, date, meal: initi
                 ))}
               </View>
             )}
-            {DETAIL_ROWS.map(row => (
-              <View key={row.key} style={styles.detailRow}>
-                <AppText variant="footnote" tone="secondary" style={styles.flex}>{row.label}</AppText>
-                <AppText variant="footnote" weight="600" numeric>{totals[row.key]} {row.unit}</AppText>
-              </View>
-            ))}
+            <NutritionLabel
+              totals={totals}
+              unknown={result.unknown}
+              serving={singleLabel ? result.base!.serving_size ?? '1 serving' : 'Your order'}
+              servings={servings}
+              approx={approx}
+            />
+            <IngredientList parts={result.parts} />
           </Animated.View>
         )}
       </View>
@@ -420,13 +418,17 @@ export function MenuItemSheet({ menu, item, onClose, onLogged, date, meal: initi
     <Sheet
       ref={sheetRef}
       snapPoints={snapPoints}
+      topInset={0}
+      animatedIndex={animatedIndex}
+      backgroundComponent={FullScreenBackground}
+      handleComponent={FadingHandle}
       onDismiss={onClose}
       enableDynamicSizing={false}
       footerComponent={renderFooter}
     >
       {item && menu ? (
         <>
-          <View style={[styles.header, { borderBottomColor: theme.separator }]}>
+          <Animated.View style={[styles.header, { borderBottomColor: theme.separator }, headerStyle]}>
             <View style={styles.flex}>
               <AppText variant="title2" numberOfLines={3}>{item.name}</AppText>
               <View style={styles.headerMeta}>
@@ -436,7 +438,7 @@ export function MenuItemSheet({ menu, item, onClose, onLogged, date, meal: initi
               </View>
             </View>
             <IconButton icon="close" accessibilityLabel="Close" onPress={() => sheetRef.current?.dismiss()} />
-          </View>
+          </Animated.View>
 
           <BottomSheetScrollView
             contentContainerStyle={[styles.content, { paddingBottom: 120 + insets.bottom }]}
@@ -450,7 +452,7 @@ export function MenuItemSheet({ menu, item, onClose, onLogged, date, meal: initi
                 <AppText variant="subhead" weight="600" tone={conflicts.length ? 'danger' : 'warning'} style={styles.flex}>
                   {conflicts.length
                     ? `Contains ${allergenList(conflicts)}, which you avoid.`
-                    : `May contain ${allergenList(possible)}, going by its name. Check with staff.`}
+                    : `May contain ${allergenList(possible)}. Check with staff.`}
                 </AppText>
               </View>
             )}
@@ -501,14 +503,35 @@ export function MenuItemSheet({ menu, item, onClose, onLogged, date, meal: initi
             )}
 
             <AppText variant="caption" tone="tertiary" align="center">
-              {menu.nutrition_sources.length
-                ? 'Nutrition from Duke NetNutrition labels, matched to each dish and option. Estimates, not medical advice.'
-                : 'Menu from Duke dining. Estimates, not medical advice.'}
+              Nutrition is an estimate, not medical advice.
             </AppText>
           </BottomSheetScrollView>
         </>
       ) : null}
     </Sheet>
+  );
+}
+
+const HANDLE_HEIGHT = 25;
+
+// Square corners and no grab handle once the sheet fills the screen.
+function FullScreenBackground({ style, animatedIndex }: BottomSheetBackgroundProps) {
+  const corners = useAnimatedStyle(() => {
+    const r = interpolate(animatedIndex.value, [0, 1], [radius.xxl, 0], Extrapolation.CLAMP);
+    return { borderTopLeftRadius: r, borderTopRightRadius: r };
+  });
+  return <Animated.View pointerEvents="none" style={[style, corners]} />;
+}
+
+function FadingHandle({ animatedIndex }: BottomSheetHandleProps) {
+  const theme = useTheme();
+  const fade = useAnimatedStyle(() => ({
+    opacity: interpolate(animatedIndex.value, [0, 1], [1, 0], Extrapolation.CLAMP),
+  }));
+  return (
+    <View style={styles.handle}>
+      <Animated.View style={[styles.handleIndicator, { backgroundColor: theme.fillStrong }, fade]} />
+    </View>
   );
 }
 
@@ -531,7 +554,7 @@ function DietarySummary({ dietary, avoid }: { dietary: DishDietary; avoid: Aller
       )}
       <AppText variant="footnote" tone="secondary">
         {!dietary.allergenInfo
-          ? 'This kitchen doesn’t publish allergen info. Ask staff.'
+          ? 'No allergen info for this dish. Ask staff.'
           : dietary.contains.length
             ? (
               <>
@@ -549,9 +572,9 @@ function DietarySummary({ dietary, avoid }: { dietary: DishDietary; avoid: Aller
                 .
               </>
             )
-            : 'No allergens marked on its label.'}
+            : 'No allergens listed.'}
         {dietary.allergenInfo && dietary.mayContain.length > 0
-          ? ` Its name suggests ${allergenList(dietary.mayContain)}${dietary.contains.length ? ' too' : ''}.`
+          ? ` May ${dietary.contains.length ? 'also ' : ''}contain ${allergenList(dietary.mayContain)}.`
           : ''}
       </AppText>
     </View>
@@ -611,6 +634,16 @@ const styles = StyleSheet.create({
   },
   shrink: {
     flexShrink: 1,
+  },
+  handle: {
+    height: HANDLE_HEIGHT,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  handleIndicator: {
+    width: 40,
+    height: 5,
+    borderRadius: 3,
   },
   header: {
     flexDirection: 'row',
@@ -684,16 +717,11 @@ const styles = StyleSheet.create({
     gap: 4,
     alignSelf: 'flex-start',
   },
-  labelLine: {
-    marginBottom: space.xs,
-  },
   breakdown: {
-    gap: 2,
+    gap: space.lg,
   },
-  breakdownBlock: {
-    paddingBottom: space.sm,
-    marginBottom: space.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+  parts: {
+    gap: 2,
   },
   detailRow: {
     flexDirection: 'row',
