@@ -53,10 +53,6 @@ export default function DiningScreen() {
     <View style={[styles.container, { backgroundColor: theme.background, paddingTop: insets.top }]}>
       <View style={styles.header}>
         <AppText variant="largeTitle" accessibilityRole="header">Dining</AppText>
-        <AppText variant="subhead" tone="secondary">
-          {restaurants.length} Duke locations · menus updated {updated}
-          {__DEV__ ? ` · ${menuDatabase.source}` : ''}
-        </AppText>
         <SearchField value={query} onChangeText={setQuery} placeholder="Search restaurants or dishes" style={styles.search} />
       </View>
 
@@ -107,16 +103,16 @@ export default function DiningScreen() {
           <View style={styles.sections}>
             {openNow.length > 0 && (
               <View style={styles.section}>
-                <Label>{`OPEN NOW · ${openNow.length}`}</Label>
+                <Label>OPEN NOW</Label>
                 {renderRows(openNow)}
               </View>
             )}
             <View style={styles.section}>
-              <Label>{openNow.length ? 'LATER & DINING HALLS' : 'ALL LOCATIONS'}</Label>
+              <Label>{openNow.length ? 'OTHER LOCATIONS' : 'ALL LOCATIONS'}</Label>
               {renderRows(others)}
             </View>
             <AppText variant="caption" tone="tertiary" align="center" style={styles.note}>
-              Menus from Duke Mobile Order. Nutrition from Duke NetNutrition labels. Pull down to check for updates.
+              Menus updated {updated}. Pull down to check for new ones.
             </AppText>
           </View>
         )}

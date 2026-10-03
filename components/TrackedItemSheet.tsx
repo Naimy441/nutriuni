@@ -3,7 +3,7 @@ import { NUTRIENTS, formatAmount } from '@/constants/nutrients';
 import { radius, space, useTheme } from '@/constants/theme';
 import { relativeDayLabel, timeLabel } from '@/services/dates';
 import { sourceLabel } from '@/services/FastAccessService';
-import { MEALS, MealType, mealLabel } from '@/services/meals';
+import { MealType, mealLabel } from '@/services/meals';
 import { formatTrackedCalories, mealOf, nutritionTracker, TrackedItem } from '@/services/NutritionTracker';
 import { Ionicons } from '@expo/vector-icons';
 import { BottomSheetView } from '@gorhom/bottom-sheet';
@@ -12,7 +12,7 @@ import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText } from './ui/AppText';
 import { Button } from './ui/Button';
-import { Chip } from './ui/Chip';
+import { MealPicker } from './MealPicker';
 import { IconButton } from './ui/IconButton';
 import { Sheet, SheetRef } from './ui/Sheet';
 import { useToast } from './ui/Toast';
@@ -134,17 +134,9 @@ export function TrackedItemSheet({ selection, onDismiss }: { selection: TrackedS
               )}
             </View>
 
-            <AppText variant="footnote" tone="secondary" weight="600" style={styles.sectionLabel}>MEAL</AppText>
-            <View style={styles.meals}>
-              {MEALS.map(option => (
-                <Chip
-                  key={option.key}
-                  label={option.label}
-                  icon={option.icon}
-                  selected={option.key === meal}
-                  onPress={() => moveTo(option.key)}
-                />
-              ))}
+            <View style={styles.mealGroup}>
+              <AppText variant="footnote" tone="secondary" weight="600" style={styles.sectionLabel}>MEAL</AppText>
+              <MealPicker value={meal} onChange={moveTo} />
             </View>
 
             <View style={styles.actions}>
@@ -218,12 +210,9 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   sectionLabel: {
-    marginBottom: -space.sm,
     letterSpacing: 0.5,
   },
-  meals: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  mealGroup: {
     gap: space.sm,
   },
   actions: {

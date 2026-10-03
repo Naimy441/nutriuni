@@ -2,6 +2,7 @@
 // light and dark mode stay consistent; spacing/radius/type are shared scales.
 import { Platform, TextStyle } from 'react-native';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { useAppearance } from '@/services/appearance';
 
 const brand = {
   green: '#0E7C4A',
@@ -45,6 +46,8 @@ const light = {
   dangerSoft: 'rgba(217, 54, 54, 0.10)',
   success: '#2F9E44',
   shadow: '#0B1F14',
+  hero: brand.green, // the Profile plan card
+  onHero: '#FFFFFF',
   tabBar: 'rgba(255, 255, 255, 0.86)',
   overlay: 'rgba(8, 18, 12, 0.45)',
   ...nutrientColors,
@@ -74,6 +77,8 @@ const dark: typeof light = {
   dangerSoft: 'rgba(255, 107, 107, 0.14)',
   success: '#4ADE80',
   shadow: '#000000',
+  hero: '#104A2F',
+  onHero: '#EEF3F0',
   tabBar: 'rgba(16, 22, 19, 0.86)',
   overlay: 'rgba(0, 0, 0, 0.55)',
   ...nutrientColors,
@@ -84,7 +89,10 @@ export type Theme = typeof light;
 export const themes = { light, dark };
 
 export function useTheme(): Theme {
-  return useColorScheme() === 'dark' ? dark : light;
+  const preference = useAppearance();
+  const system = useColorScheme();
+  const scheme = preference === 'system' ? system : preference;
+  return scheme === 'dark' ? dark : light;
 }
 
 export const space = {

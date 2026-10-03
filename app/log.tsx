@@ -1,16 +1,16 @@
 // The Log sheet (centre "+" and each meal's "+"): search every dining menu,
 // re-log recent foods and saved meals, browse a restaurant, or add calories.
 import { DishRow, RestaurantRow, StatusLine } from '@/components/DiningRows';
+import { MealPicker } from '@/components/MealPicker';
 import { MenuItemSheet } from '@/components/MenuItemSheet';
 import { MealPlanCard } from '@/components/PlanCards';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
-import { Chip } from '@/components/ui/Chip';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { IconButton } from '@/components/ui/IconButton';
 import { PressableScale } from '@/components/ui/PressableScale';
 import { SearchField } from '@/components/ui/SearchField';
-import { Segmented } from '@/components/ui/Segmented';
+import { Tabs } from '@/components/ui/Tabs';
 import { ToastProvider, useToast } from '@/components/ui/Toast';
 import { formatNumber } from '@/constants/nutrients';
 import { radius, space, useTheme } from '@/constants/theme';
@@ -19,7 +19,7 @@ import { useQuickAdd } from '@/hooks/useQuickAdd';
 import { useRestaurants } from '@/hooks/useRestaurants';
 import { relativeDayLabel } from '@/services/dates';
 import { CUSTOM_MEAL_RESTAURANT, FastAccessItem, fastAccessService, useFastAccess } from '@/services/FastAccessService';
-import { isMealType, MEALS, MealType, mealForTime, mealLabel } from '@/services/meals';
+import { isMealType, MealType, mealForTime, mealLabel } from '@/services/meals';
 import { menuDatabase, openStatus, useClock, useMenuRevision } from '@/services/MenuDatabase';
 import { describePreview } from '@/services/menuNutrition';
 import type { MenuItem, RestaurantMenu } from '@/services/menuTypes';
@@ -116,19 +116,15 @@ function LogContent() {
         <View style={styles.titleRow}>
           <View style={styles.flex}>
             <AppText variant="title1" accessibilityRole="header">Log food</AppText>
-            <AppText variant="subhead" tone="secondary">
-              {mealLabel(meal)} · {relativeDayLabel(date, today)}
-            </AppText>
+            {date !== today && (
+              <AppText variant="subhead" tone="brand" weight="600">{relativeDayLabel(date, today)}</AppText>
+            )}
           </View>
           <IconButton icon="close" accessibilityLabel="Close" onPress={close} />
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mealChips}>
-          {MEALS.map(option => (
-            <Chip key={option.key} label={option.label} icon={option.icon} selected={meal === option.key} onPress={() => setMeal(option.key)} />
-          ))}
-        </ScrollView>
+        <MealPicker value={meal} onChange={setMeal} />
         <SearchField value={query} onChangeText={setQuery} placeholder="Search dishes, restaurants, your meals" />
-        {!searching && <Segmented options={TABS} value={tab} onChange={next => { setTab(next); setBrowsing(null); }} />}
+        {!searching && <Tabs options={TABS} value={tab} onChange={next => { setTab(next); setBrowsing(null); }} />}
       </View>
 
       <ScrollView
@@ -259,9 +255,10 @@ function PlanPicks({ date, meal, onOpen }: {
   return (
     <View style={styles.smallGap}>
       <AppText variant="footnote" tone="secondary" weight="600" style={styles.label}>
-        FITS YOUR PLAN
+        {`FITS YOUR PLAN · ABOUT ${formatNumber(target.calories)} CAL`}
       </AppText>
       <MealPlanCard
+        showHeader={false}
         target={target}
         suggestions={suggestions}
         loggingKey={logging}
@@ -645,9 +642,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: space.md,
-  },
-  mealChips: {
-    gap: space.sm,
   },
   body: {
     paddingHorizontal: space.lg,

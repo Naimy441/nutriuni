@@ -230,6 +230,20 @@ export function weekMessage(plan: WeekPlan): { tone: 'good' | 'info' | 'warning'
   return { tone: 'info', text: `${fmt(plan.carry)} cal under so far, so you have about ${fmt(today?.adjustment ?? 0)} more to eat each day.` };
 }
 
+// The same, in a few words for the Today summary.
+export function weekBrief(plan: WeekPlan): string {
+  const fmt = (n: number) => Math.round(Math.abs(n)).toLocaleString();
+  const days = plan.remainingDays === 1 ? 'today' : `next ${plan.remainingDays} days`;
+  if (!plan.balanced) return 'Weekly balancing is off';
+  if (Math.abs(plan.carry) < 150) return 'On track this week';
+  if (plan.carry > 0) {
+    return plan.projectedDifference > 150
+      ? `${fmt(plan.carry)} over this week · lighter days ahead`
+      : `${fmt(plan.carry)} over this week · ${days} lighter`;
+  }
+  return `${fmt(plan.carry)} under this week · ${days} a bit more`;
+}
+
 function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }

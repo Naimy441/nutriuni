@@ -96,12 +96,19 @@ export default function ProgressScreen() {
           <CalorieChart logs={logs} goal={goals.calories} today={today} range={range} onSelect={openDay} />
         </Card>
 
-        <View style={styles.statsGrid}>
-          <StatTile icon="flame-outline" color={theme.warning} label="Logging streak" value={streak ? `${streak} day${streak === 1 ? '' : 's'}` : '—'} />
-          <StatTile icon="calendar-outline" color={theme.brandText} label="Days logged" value={`${withFood.length} of ${days.length}`} />
-          <StatTile icon="barbell-outline" color={theme.protein} label="Avg protein" value={withFood.length ? `${formatNumber(avgProtein)} g` : '—'} detail={`Target ${formatNumber(goals.protein)} g`} />
-          <StatTile icon="locate-outline" color={theme.calories} label="Near target" value={withFood.length ? `${onTarget} day${onTarget === 1 ? '' : 's'}` : '—'} detail="Within 10%" />
-        </View>
+        <Card padded={false}>
+          <View style={styles.statsRow}>
+            <StatTile icon="flame-outline" color={theme.warning} label="Logging streak" value={streak ? `${streak} day${streak === 1 ? '' : 's'}` : '—'} />
+            <View style={[styles.vDivider, { backgroundColor: theme.separator }]} />
+            <StatTile icon="calendar-outline" color={theme.brandText} label="Days logged" value={`${withFood.length} of ${days.length}`} />
+          </View>
+          <View style={[styles.hDivider, { backgroundColor: theme.separator }]} />
+          <View style={styles.statsRow}>
+            <StatTile icon="barbell-outline" color={theme.protein} label="Avg protein" value={withFood.length ? `${formatNumber(avgProtein)} g` : '—'} detail={`Target ${formatNumber(goals.protein)} g`} />
+            <View style={[styles.vDivider, { backgroundColor: theme.separator }]} />
+            <StatTile icon="locate-outline" color={theme.calories} label="Near target" value={withFood.length ? `${onTarget} day${onTarget === 1 ? '' : 's'}` : '—'} detail="Within 10%" />
+          </View>
+        </Card>
 
         {macroTotal > 0 && (
           <Card style={styles.macroCard}>
@@ -192,12 +199,14 @@ function StatTile({ icon, color, label, value, detail }: {
   detail?: string;
 }) {
   return (
-    <Card style={styles.tile}>
-      <Ionicons name={icon} size={20} color={color} />
-      <AppText variant="caption" tone="secondary" style={styles.tileLabel}>{label}</AppText>
+    <View style={styles.tile}>
+      <View style={styles.tileLabel}>
+        <Ionicons name={icon} size={15} color={color} />
+        <AppText variant="caption" tone="secondary">{label}</AppText>
+      </View>
       <AppText variant="title3" numeric>{value}</AppText>
       {detail ? <AppText variant="caption" tone="tertiary">{detail}</AppText> : null}
-    </Card>
+    </View>
   );
 }
 
@@ -327,18 +336,25 @@ const styles = StyleSheet.create({
     marginTop: space.sm,
     height: 14,
   },
-  statsGrid: {
+  statsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: space.md,
+  },
+  vDivider: {
+    width: StyleSheet.hairlineWidth,
+  },
+  hDivider: {
+    height: StyleSheet.hairlineWidth,
   },
   tile: {
-    flexBasis: '47%',
-    flexGrow: 1,
+    flex: 1,
     gap: 2,
+    padding: space.lg,
   },
   tileLabel: {
-    marginTop: space.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 2,
   },
   macroCard: {
     gap: space.md,

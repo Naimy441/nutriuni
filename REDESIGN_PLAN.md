@@ -176,3 +176,23 @@ UI in `components/PlanCards.tsx`, `components/UpNext.tsx` (Today), `app/plan.tsx
   restaurant.
 - **Checks:** `npx tsc -p scripts/tsconfig.verify.json && node .verify/scripts/verify-planner.js`
   (196 checks, including suggestions against the bundled menus).
+
+## Appearance and decluttering pass
+
+- **Appearance:** Profile → Appearance (Automatic / Light / Dark), stored under
+  `appearance` (`services/appearance.ts`). `useTheme()` follows it, and
+  `Appearance.setColorScheme` makes native controls follow too. The splash stays up
+  until it's loaded.
+- **Today:** two stats (Eaten, Target) beside the ring; nutrients on one 3 × 2 grid
+  (macros, then fiber/sugar/sodium); the week as one line at the bottom of the
+  summary card (`weekBrief`, tap for the Meal plan); Up next shows 2 picks; meals in
+  one card where empty meals are a single row; Eat it again as compact pills.
+- **Consistency:** a meal is always chosen with `MealPicker` (one-line segmented);
+  screens that switch content use underline `Tabs` (Log). Suggestions show at most
+  one tag.
+- **Dining:** no subtitle or data-source tag; restaurant rows are name + status
+  ("No nutrition info" inline only where there's none); the restaurant page header
+  is one row (back, icon, name, status · hours) with no coverage bar; no
+  "Customizable" label.
+- **Plan / Progress:** "How does the plan work?" collapses, in one card with the
+  Balance switch; Progress stats are one 2 × 2 card.

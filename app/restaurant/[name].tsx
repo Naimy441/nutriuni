@@ -85,7 +85,6 @@ export default function RestaurantPage() {
 
   const status = menu.hours ? openStatus(menu.hours, now) : null;
   const hoursLine = menu.hours ? todaysHours(menu.hours, now) : menu.hours_text;
-  const coverage = menu.stats.items ? Math.round((menu.stats.with_nutrition / menu.stats.items) * 100) : 0;
 
   const renderItem = ({ item, index, section }: { item: MenuItem; index: number; section: { data: MenuItem[] } }) => (
     <View
@@ -116,28 +115,21 @@ export default function RestaurantPage() {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={[styles.top, { paddingTop: insets.top + space.xs, borderBottomColor: theme.separator }]}>
-        <View style={styles.topBar}>
-          <IconButton icon="chevron-back" accessibilityLabel="Back" onPress={back} />
-        </View>
         <View style={styles.hero}>
-          {summary ? <RestaurantIcon restaurant={summary} size={60} /> : null}
+          <IconButton icon="chevron-back" accessibilityLabel="Back" onPress={back} />
+          {summary ? <RestaurantIcon restaurant={summary} size={44} /> : null}
           <View style={styles.flex}>
-            <AppText variant="title2" numberOfLines={2} accessibilityRole="header">{menu.name}</AppText>
-            <StatusLine status={status} fallback={hoursLine} />
-            {status?.label && hoursLine ? <AppText variant="caption" tone="tertiary" numberOfLines={1}>Today {hoursLine}</AppText> : null}
+            <AppText variant="title3" numberOfLines={1} accessibilityRole="header">{menu.name}</AppText>
+            <StatusLine status={status} fallback={hoursLine} detail={status?.label ? hoursLine : undefined} />
+            {menu.stats.with_nutrition === 0 && (
+              <AppText variant="caption" tone="tertiary">No nutrition info · you can enter your own</AppText>
+            )}
           </View>
-        </View>
-        <View style={[styles.coverage, { backgroundColor: theme.fill }]}>
-          <AppText variant="footnote" tone="secondary">
-            {menu.stats.with_nutrition
-              ? `Nutrition for ${menu.stats.with_nutrition} of ${menu.stats.items} items (${coverage}%)`
-              : 'No nutrition published yet. You can still log meals and enter your own estimate.'}
-          </AppText>
         </View>
         <SearchField value={query} onChangeText={setQuery} placeholder={`Search ${menu.name}`} />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
           {menu.stats.with_nutrition > 0 && menu.stats.with_nutrition < menu.stats.items && (
-            <Chip label="Has nutrition" icon="nutrition-outline" selected={onlyWithNutrition} onPress={() => setOnlyWithNutrition(v => !v)} />
+            <Chip label="With nutrition" icon="nutrition-outline" selected={onlyWithNutrition} onPress={() => setOnlyWithNutrition(v => !v)} />
           )}
           {[{ name: ALL }, ...menu.sections].map(section => (
             <Chip
@@ -200,11 +192,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.md,
-  },
-  coverage: {
-    borderRadius: radius.md,
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm,
   },
   chips: {
     gap: space.sm,

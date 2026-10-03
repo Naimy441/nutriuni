@@ -14,7 +14,7 @@ export function UpNext({ date }: { date: string }) {
   const router = useRouter();
   const { meals } = useMealPlan(date);
   const next = meals.find(meal => meal.state === 'planned');
-  const suggestions = useSuggestions(date, next, 3);
+  const suggestions = useSuggestions(date, next, 2);
   const logSuggestion = useLogSuggestion();
   const [sheet, setSheet] = useState<{ menu: RestaurantMenu; item: MenuItem } | null>(null);
   const [logging, setLogging] = useState<string | null>(null);
@@ -33,8 +33,7 @@ export function UpNext({ date }: { date: string }) {
     <View>
       <SectionHeader
         title="Up next"
-        subtitle="Sized to keep your week on track"
-        actionLabel="Full plan"
+        actionLabel="Meal plan"
         onAction={() => router.push('/plan')}
         style={{ paddingHorizontal: 4 }}
       />

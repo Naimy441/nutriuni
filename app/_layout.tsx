@@ -1,6 +1,7 @@
 import { OnboardingScreen } from '@/components/OnboardingScreen';
 import { ToastProvider } from '@/components/ui/Toast';
 import { Theme, useTheme } from '@/constants/theme';
+import { appearanceStore } from '@/services/appearance';
 import { goalsStore, useGoals } from '@/services/goals';
 import { menuDatabase } from '@/services/MenuDatabase';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
@@ -9,7 +10,7 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 
@@ -35,13 +36,15 @@ function navigationTheme(theme: Theme) {
 
 export default function RootLayout() {
   const theme = useTheme();
-  const { loaded, onboarded } = useGoals();
+  const { onboarded } = useGoals();
+  const [loaded, setLoaded] = useState(false);
   const navTheme = useMemo(() => navigationTheme(theme), [theme]);
 
-  // Load cached menus and check Firestore for newer ones in the background.
+  // Load cached menus and check Firestore for newer ones in the background;
+  // wait for settings so the first frame has the right screen and colors.
   useEffect(() => {
     menuDatabase.start();
-    goalsStore.load();
+    Promise.all([goalsStore.load(), appearanceStore.load()]).finally(() => setLoaded(true));
   }, []);
 
   useEffect(() => {

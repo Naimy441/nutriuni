@@ -97,8 +97,9 @@ function Budget({ label, value, total, unit, color }: { label: string; value: nu
 const SIZE_TEXT = { lighter: 'Lighter', bigger: 'Bigger', usual: '' } as const;
 
 export function MealPlanCard({
-  target, suggestions, onOpen, onLog, loggingKey, footer,
+  target, suggestions, onOpen, onLog, loggingKey, footer, showHeader = true,
 }: {
+  showHeader?: boolean; // off where the meal is already shown above the card
   target: MealTarget;
   suggestions: Suggestion[];
   onOpen: (suggestion: Suggestion, part: FoodOption) => void;
@@ -111,36 +112,37 @@ export function MealPlanCard({
   const size = SIZE_TEXT[target.size];
   return (
     <Card padded={false} style={styles.mealCard}>
-      <View style={styles.mealHeader}>
-        <View style={[styles.mealIcon, { backgroundColor: theme.brandSoft }]}>
+      {showHeader && (
+        <View style={styles.mealHeader}>
           <Ionicons name={meal.icon} size={18} color={theme.brandText} />
-        </View>
-        <View style={styles.flex}>
-          <View style={styles.mealTitleRow}>
-            <AppText variant="headline">{meal.label}</AppText>
-            {target.state === 'planned' && size ? (
-              <View style={[styles.sizeTag, { backgroundColor: target.size === 'lighter' ? theme.fill : theme.brandSoft }]}>
-                <AppText variant="micro" tone={target.size === 'lighter' ? 'secondary' : 'brand'}>{size.toUpperCase()}</AppText>
-              </View>
-            ) : null}
+          <View style={styles.flex}>
+            <View style={styles.mealTitleRow}>
+              <AppText variant="headline">{meal.label}</AppText>
+              {target.state === 'planned' && size ? (
+                <View style={[styles.sizeTag, { backgroundColor: target.size === 'lighter' ? theme.fill : theme.brandSoft }]}>
+                  <AppText variant="micro" tone={target.size === 'lighter' ? 'secondary' : 'brand'}>{size.toUpperCase()}</AppText>
+                </View>
+              ) : null}
+            </View>
+            <AppText variant="footnote" tone="secondary" numeric>
+              {target.state === 'eaten'
+                ? `Eaten · ${formatNumber(target.eaten.calories)} cal · ${formatNumber(target.eaten.protein)} g protein`
+                : target.state === 'skipped'
+                  ? 'Skipped'
+                  : target.state === 'optional'
+                    ? 'No room today, and that’s fine'
+                    : `About ${formatNumber(target.calories)} cal · ${formatNumber(target.protein)} g protein`}
+            </AppText>
           </View>
-          <AppText variant="footnote" tone="secondary" numeric>
-            {target.state === 'eaten'
-              ? `Eaten · ${formatNumber(target.eaten.calories)} cal · ${formatNumber(target.eaten.protein)} g protein`
-              : target.state === 'skipped'
-                ? 'Skipped'
-                : target.state === 'optional'
-                  ? 'No room today, and that’s fine'
-                  : `Aim for about ${formatNumber(target.calories)} cal · ${formatNumber(target.protein)} g protein`}
-          </AppText>
         </View>
-      </View>
+      )}
       {target.state === 'planned' && (
         suggestions.length ? (
           <Animated.View entering={FadeIn.duration(200)}>
-            {suggestions.map(suggestion => (
+            {suggestions.map((suggestion, index) => (
               <SuggestionRow
                 key={suggestion.key}
+                divider={showHeader || index > 0}
                 suggestion={suggestion}
                 onOpen={onOpen}
                 onLog={onLog}
@@ -149,7 +151,7 @@ export function MealPlanCard({
             ))}
           </Animated.View>
         ) : (
-          <View style={[styles.emptyRow, { borderTopColor: theme.separator }]}>
+          <View style={[styles.emptyRow, showHeader && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.separator }]}>
             <AppText variant="footnote" tone="tertiary">
               {target.calories < 120
                 ? 'You’re about at today’s target — a piece of fruit or nothing at all.'
@@ -163,6 +165,8 @@ export function MealPlanCard({
   );
 }
 
+const TAG_PRIORITY: Suggestion['tags'][number][] = ['my-meal', 'favorite', 'check-hours'];
+
 const TAG_TEXT: Record<Suggestion['tags'][number], string> = {
   'high-protein': 'High protein',
   favorite: 'You’ve had this',
@@ -170,7 +174,8 @@ const TAG_TEXT: Record<Suggestion['tags'][number], string> = {
   'check-hours': 'Check hours',
 };
 
-export function SuggestionRow({ suggestion, onOpen, onLog, logging }: {
+export function SuggestionRow({ suggestion, onOpen, onLog, logging, divider = true }: {
+  divider?: boolean;
   suggestion: Suggestion;
   onOpen: (suggestion: Suggestion, part: FoodOption) => void;
   onLog: (suggestion: Suggestion) => void;
@@ -179,9 +184,10 @@ export function SuggestionRow({ suggestion, onOpen, onLog, logging }: {
   const theme = useTheme();
   const places = [...new Set(suggestion.parts.map(part => part.restaurantName))].join(' · ');
   const menuPart = suggestion.parts.find(part => part.source === 'menu');
-  const tags = suggestion.tags.map(tag => TAG_TEXT[tag]);
+  // One tag at most; protein is already shown in grams.
+  const tag = TAG_PRIORITY.find(t => suggestion.tags.includes(t));
   return (
-    <View style={[styles.suggestion, { borderTopColor: theme.separator }]}>
+    <View style={[styles.suggestion, divider && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.separator }]}>
       <Pressable
         style={({ pressed }) => [styles.flex, pressed && { opacity: 0.6 }]}
         onPress={() => (menuPart ? onOpen(suggestion, menuPart) : onLog(suggestion))}
@@ -196,9 +202,7 @@ export function SuggestionRow({ suggestion, onOpen, onLog, logging }: {
             {suggestion.approx ? '~' : ''}{formatNumber(suggestion.calories)} cal
           </AppText>
           <AppText variant="caption" weight="600" color={theme.protein} numeric>{Math.round(suggestion.protein)} g protein</AppText>
-          {tags.map(tag => (
-            <AppText key={tag} variant="caption" tone="tertiary">· {tag}</AppText>
-          ))}
+          {tag ? <AppText variant="caption" tone="tertiary">· {TAG_TEXT[tag]}</AppText> : null}
         </View>
       </Pressable>
       <PressableScale
@@ -292,13 +296,6 @@ const styles = StyleSheet.create({
     gap: space.md,
     padding: space.lg,
   },
-  mealIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   mealTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -315,7 +312,6 @@ const styles = StyleSheet.create({
     gap: space.md,
     paddingHorizontal: space.lg,
     paddingVertical: space.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
   },
   tagRow: {
     flexDirection: 'row',
@@ -334,6 +330,5 @@ const styles = StyleSheet.create({
   emptyRow: {
     paddingHorizontal: space.lg,
     paddingVertical: space.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
   },
 });

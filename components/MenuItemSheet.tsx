@@ -2,7 +2,7 @@
 // see its nutrition update live before logging it.
 import { radius, space, useTheme } from '@/constants/theme';
 import { relativeDayLabel } from '@/services/dates';
-import { MEALS, MealType, mealForTime, mealLabel } from '@/services/meals';
+import { MealType, mealForTime, mealLabel } from '@/services/meals';
 import { ManualNutrition, trackedEntryFromOrder } from '@/services/menuLogging';
 import {
   computeNutrition, defaultSelection, groupMax, hasNutritionSource, isSingleChoice, NutrientKey,
@@ -18,10 +18,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MealPicker } from './MealPicker';
 import { AnimatedNumber } from './ui/AnimatedNumber';
 import { AppText } from './ui/AppText';
 import { Button } from './ui/Button';
-import { Chip } from './ui/Chip';
 import { IconButton } from './ui/IconButton';
 import { triggerHaptic } from './ui/PressableScale';
 import { Sheet, SheetRef } from './ui/Sheet';
@@ -289,11 +289,6 @@ export function MenuItemSheet({ menu, item, onClose, onLogged, date, meal: initi
             Estimated by adding up {result.parts.length} NetNutrition label{result.parts.length === 1 ? '' : 's'}
           </Note>
         )}
-        {result.base && !item.components?.length && (
-          <Note icon="pricetag-outline" color={theme.textSecondary}>
-            Label: {result.base.name}{result.base.serving_size ? ` · ${result.base.serving_size}` : ''}
-          </Note>
-        )}
         {stale && lastSeen && (
           <Note icon="time-outline" color={theme.warning}>Some labels were last published in {monthYear(lastSeen)}</Note>
         )}
@@ -312,6 +307,11 @@ export function MenuItemSheet({ menu, item, onClose, onLogged, date, meal: initi
         </Pressable>
         {showBreakdown && (
           <Animated.View entering={FadeIn.duration(200)} style={styles.breakdown}>
+            {result.base && !item.components?.length && (
+              <AppText variant="footnote" tone="tertiary" style={styles.labelLine}>
+                NetNutrition label: {result.base.name}{result.base.serving_size ? ` · ${result.base.serving_size}` : ''}
+              </AppText>
+            )}
             {result.parts.length > 1 && (
               <View style={[styles.breakdownBlock, { borderBottomColor: theme.separator }]}>
                 {result.parts.map((part, index) => (
@@ -460,11 +460,7 @@ export function MenuItemSheet({ menu, item, onClose, onLogged, date, meal: initi
                   <AppText variant="footnote" tone="tertiary">{relativeDayLabel(logDate, today)}</AppText>
                 )}
               </View>
-              <View style={styles.meals}>
-                {MEALS.map(option => (
-                  <Chip key={option.key} label={option.label} icon={option.icon} selected={meal === option.key} onPress={() => setMeal(option.key)} />
-                ))}
-              </View>
+              <MealPicker value={meal} onChange={setMeal} />
             </View>
 
             {result?.totals && !manualMode && (
@@ -588,6 +584,9 @@ const styles = StyleSheet.create({
     gap: 4,
     alignSelf: 'flex-start',
   },
+  labelLine: {
+    marginBottom: space.xs,
+  },
   breakdown: {
     gap: 2,
   },
@@ -636,11 +635,6 @@ const styles = StyleSheet.create({
     gap: space.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: space.lg,
-  },
-  meals: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: space.sm,
   },
   inlineLink: {
     alignSelf: 'center',

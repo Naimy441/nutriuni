@@ -34,14 +34,17 @@ export function RestaurantIcon({ restaurant, size = 48 }: { restaurant: Restaura
   );
 }
 
-export function StatusLine({ status, fallback }: { status: OpenStatus | null; fallback?: string }) {
+export function StatusLine({ status, fallback, detail }: { status: OpenStatus | null; fallback?: string; detail?: string }) {
   const theme = useTheme();
   if (status?.label) {
     return (
       <View style={styles.statusRow}>
         <View style={[styles.statusDot, { backgroundColor: status.isOpen ? theme.success : theme.textTertiary }]} />
-        <AppText variant="footnote" weight={status.isOpen ? '600' : '400'} color={status.isOpen ? theme.success : theme.textSecondary} numberOfLines={1}>
-          {status.label}
+        <AppText variant="footnote" numberOfLines={1} style={styles.shrink}>
+          <AppText variant="footnote" weight={status.isOpen ? '600' : '400'} color={status.isOpen ? theme.success : theme.textSecondary}>
+            {status.label}
+          </AppText>
+          {detail ? <AppText variant="footnote" tone="tertiary">{`  ·  ${detail}`}</AppText> : null}
         </AppText>
       </View>
     );
@@ -57,7 +60,6 @@ export function RestaurantRow({
   onPress: () => void;
 }) {
   const theme = useTheme();
-  const coverage = restaurant.items ? Math.round((restaurant.with_nutrition / restaurant.items) * 100) : 0;
   return (
     <PressableScale
       onPress={onPress}
@@ -68,12 +70,11 @@ export function RestaurantRow({
       <RestaurantIcon restaurant={restaurant} />
       <View style={styles.flex}>
         <AppText variant="headline" numberOfLines={1}>{restaurant.name}</AppText>
-        <StatusLine status={status} fallback={`Dining hall${restaurant.hours_text ? ` · ${restaurant.hours_text}` : ''}`} />
-        <AppText variant="caption" tone="tertiary" weight="500">
-          {restaurant.with_nutrition
-            ? `${restaurant.items} items · ${coverage}% with nutrition`
-            : `${restaurant.items} items · no nutrition published`}
-        </AppText>
+        <StatusLine
+          status={status}
+          fallback={restaurant.with_nutrition === 0 ? 'Dining hall · No nutrition info' : 'Dining hall'}
+          detail={restaurant.with_nutrition === 0 ? 'No nutrition info' : undefined}
+        />
       </View>
       <Ionicons name="chevron-forward" size={18} color={theme.textTertiary} />
     </PressableScale>
@@ -111,12 +112,6 @@ export function DishRow({
         <View style={styles.dishMeta}>
           <CaloriePill kind={preview.kind} calories={preview.calories} />
           {item.price !== undefined && <AppText variant="footnote" tone="secondary">${item.price.toFixed(2)}</AppText>}
-          {item.options?.length ? (
-            <View style={styles.custom}>
-              <Ionicons name="options-outline" size={12} color={theme.textTertiary} />
-              <AppText variant="caption" tone="tertiary">Customizable</AppText>
-            </View>
-          ) : null}
         </View>
       </Pressable>
       {onQuickAdd && (
@@ -187,11 +182,6 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: space.sm,
     marginTop: 3,
-  },
-  custom: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
   },
   add: {
     width: 36,

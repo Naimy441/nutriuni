@@ -1,13 +1,14 @@
-// One day's log: calories-left ring, macros, the day's meals and one-tap
+// One day's log: calories-left ring, nutrients, the day's meals and one-tap
 // re-logging. Used by the Today tab and by past days opened from Progress.
 import { MACROS, MICROS, NUTRIENTS, TrackedNutrient, formatAmount, formatNumber } from '@/constants/nutrients';
-import { radius, shadow, space, useTheme } from '@/constants/theme';
+import { radius, space, useTheme } from '@/constants/theme';
+import { useDayTargets, useWeekPlan } from '@/hooks/usePlanner';
 import { timeLabel } from '@/services/dates';
 import { fastAccessService, FastAccessItem, sourceLabel, useFastAccess } from '@/services/FastAccessService';
 import { useGoals } from '@/services/goals';
-import { useDayTargets, useWeekPlan } from '@/hooks/usePlanner';
 import { MEALS, MealType, mealForTime, mealLabel } from '@/services/meals';
 import { formatTrackedCalories, mealOf, nutritionTracker, TrackedItem, useDayLog, useLoggedDays } from '@/services/NutritionTracker';
+import { weekBrief, WeekPlan } from '@/services/planner';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
@@ -15,7 +16,6 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import Animated, { FadeIn, FadeInDown, FadeOut, LinearTransition } from 'react-native-reanimated';
 import { NutrientSheet } from './NutrientSheet';
-import { WeekCard } from './PlanCards';
 import { TrackedItemSheet, TrackedSelection } from './TrackedItemSheet';
 import { AnimatedNumber } from './ui/AnimatedNumber';
 import { AppText } from './ui/AppText';
@@ -57,6 +57,7 @@ export function DayView({ date, today, header, bottomPadding }: DayViewProps) {
   }, [log.items]);
 
   const openLog = (meal?: MealType) => router.push({ pathname: '/log', params: { date, ...(meal ? { meal } : {}) } });
+  const firstTime = isToday && log.items.length === 0 && loggedDays.length === 0;
 
   return (
     <>
@@ -65,15 +66,22 @@ export function DayView({ date, today, header, bottomPadding }: DayViewProps) {
         showsVerticalScrollIndicator={false}
       >
         {header}
-        <SummaryCard totals={log.totals} goals={goals} adjustment={week.balanced ? targets.adjustment : 0} onSelect={setNutrient} />
+        <SummaryCard
+          totals={log.totals}
+          goals={goals}
+          adjustment={week.balanced ? targets.adjustment : 0}
+          week={isToday ? week : null}
+          onSelect={setNutrient}
+          onOpenPlan={() => router.push('/plan')}
+        />
 
-        {log.items.length === 0 && isToday && loggedDays.length === 0 && (
+        {firstTime && (
           <Animated.View entering={FadeIn.duration(300)}>
             <Card style={styles.welcome}>
               <View style={styles.welcomeText}>
                 <AppText variant="title3">Log your first meal</AppText>
                 <AppText variant="subhead" tone="secondary">
-                  Search every Duke dining menu with nutrition built in, re-log a favorite, or add calories yourself.
+                  Search every Duke dining menu with nutrition built in, or add calories yourself.
                 </AppText>
               </View>
               <View style={styles.welcomeActions}>
@@ -84,20 +92,23 @@ export function DayView({ date, today, header, bottomPadding }: DayViewProps) {
           </Animated.View>
         )}
 
-        {isToday && <WeekCard plan={week} onPress={() => router.push('/plan')} />}
-        {isToday && <UpNext date={date} />}
+        {isToday && !firstTime && <UpNext date={date} />}
 
-        <View style={styles.meals}>
-          {MEALS.map(meal => (
-            <MealSection
-              key={meal.key}
-              meal={meal}
-              items={byMeal[meal.key]}
-              date={date}
-              onAdd={() => openLog(meal.key)}
-              onSelect={item => setSelected({ item, date })}
-            />
-          ))}
+        <View>
+          <SectionHeader title="Meals" style={styles.inset} />
+          <Card padded={false} style={styles.clip}>
+            {MEALS.map((meal, index) => (
+              <MealSection
+                key={meal.key}
+                meal={meal}
+                items={byMeal[meal.key]}
+                date={date}
+                divider={index > 0}
+                onAdd={() => openLog(meal.key)}
+                onSelect={item => setSelected({ item, date })}
+              />
+            ))}
+          </Card>
         </View>
 
         <RecentsRow date={date} />
@@ -124,125 +135,127 @@ export function DayView({ date, today, header, bottomPadding }: DayViewProps) {
 // ---- summary ----
 
 function SummaryCard({
-  totals, goals, adjustment, onSelect,
+  totals, goals, adjustment, week, onSelect, onOpenPlan,
 }: {
   totals: Record<TrackedNutrient, number>;
   goals: Record<TrackedNutrient, number>;
   adjustment: number; // today's target versus the plain daily goal
+  week: WeekPlan | null; // shown for today only
   onSelect: (key: TrackedNutrient) => void;
+  onOpenPlan: () => void;
 }) {
   const theme = useTheme();
   const eaten = totals.calories;
   const left = goals.calories - eaten;
   const over = left < 0;
   return (
-    <Card style={styles.summary}>
-      <View style={styles.summaryTop}>
-        <PressableScale
-          onPress={() => onSelect('calories')}
-          scaleTo={0.96}
-          haptic="selection"
-          accessibilityLabel={`${formatNumber(Math.abs(left))} calories ${over ? 'over' : 'left'}. ${formatNumber(eaten)} eaten of ${formatNumber(goals.calories)}.`}
-          accessibilityHint="Shows where today's calories came from"
-        >
-          <ProgressRing
-            size={156}
-            stroke={14}
-            progress={goals.calories ? eaten / goals.calories : 0}
-            color={theme.calories}
-            overColor={theme.warning}
+    <Card padded={false} style={styles.clip}>
+      <View style={styles.summary}>
+        <View style={styles.summaryTop}>
+          <PressableScale
+            onPress={() => onSelect('calories')}
+            scaleTo={0.96}
+            haptic="selection"
+            accessibilityLabel={`${formatNumber(Math.abs(left))} calories ${over ? 'over' : 'left'}. ${formatNumber(eaten)} eaten of ${formatNumber(goals.calories)}.`}
+            accessibilityHint="Shows where today's calories came from"
           >
-            <AnimatedNumber value={Math.abs(left)} variant="title1" weight="800" />
-            <AppText variant="footnote" tone={over ? 'warning' : 'secondary'} weight="600">
-              {over ? 'cal over' : 'cal left'}
-            </AppText>
-          </ProgressRing>
-        </PressableScale>
-        <View style={styles.summaryStats}>
-          <Stat
-            icon="flag-outline"
-            label="Target"
-            value={formatNumber(goals.calories)}
-            note={adjustment ? `${adjustment > 0 ? '+' : '−'}${formatNumber(Math.abs(adjustment))} for your week` : undefined}
-            color={theme.textSecondary}
-          />
-          <Stat icon="restaurant-outline" label="Eaten" value={formatNumber(eaten)} color={theme.calories} />
-          <Stat
-            icon={over ? 'alert-circle-outline' : 'leaf-outline'}
-            label={over ? 'Over' : 'Remaining'}
-            value={formatNumber(Math.abs(left))}
-            color={over ? theme.warning : theme.textSecondary}
-          />
+            <ProgressRing
+              size={148}
+              stroke={13}
+              progress={goals.calories ? eaten / goals.calories : 0}
+              color={theme.calories}
+              overColor={theme.warning}
+            >
+              <AnimatedNumber value={Math.abs(left)} variant="title1" weight="800" />
+              <AppText variant="footnote" tone={over ? 'warning' : 'secondary'} weight="600">
+                {over ? 'cal over' : 'cal left'}
+              </AppText>
+            </ProgressRing>
+          </PressableScale>
+          <View style={styles.summaryStats}>
+            <Stat label="Eaten" value={formatNumber(eaten)} />
+            <Stat
+              label="Target"
+              value={formatNumber(goals.calories)}
+              note={adjustment ? `${adjustment > 0 ? '+' : '−'}${formatNumber(Math.abs(adjustment))} for your week` : undefined}
+            />
+          </View>
+        </View>
+
+        <View style={[styles.divider, { backgroundColor: theme.separator }]} />
+
+        <View style={styles.nutrientGrid}>
+          {MACROS.map(key => (
+            <NutrientCell key={key} nutrient={key} total={totals[key]} goal={goals[key]} onPress={() => onSelect(key)} />
+          ))}
+        </View>
+        <View style={styles.nutrientGrid}>
+          {MICROS.map(key => (
+            <NutrientCell key={key} nutrient={key} total={totals[key]} goal={goals[key]} onPress={() => onSelect(key)} small />
+          ))}
         </View>
       </View>
 
-      <View style={[styles.divider, { backgroundColor: theme.separator }]} />
-
-      <View style={styles.macros}>
-        {MACROS.map(key => (
-          <Pressable
-            key={key}
-            style={styles.macro}
-            onPress={() => {
-              triggerHaptic('selection');
-              onSelect(key);
-            }}
-            accessibilityRole="button"
-            accessibilityLabel={`${NUTRIENTS[key].label}: ${formatAmount(totals[key], 'g')} of ${formatAmount(goals[key], 'g')}`}
-          >
-            <AppText variant="caption" tone="secondary">{NUTRIENTS[key].label}</AppText>
-            <AppText variant="headline" numeric>
-              {Math.round(totals[key])}
-              <AppText variant="footnote" tone="tertiary" numeric> / {Math.round(goals[key])} g</AppText>
-            </AppText>
-            <ProgressBar progress={goals[key] ? totals[key] / goals[key] : 0} color={theme[key]} height={6} />
-          </Pressable>
-        ))}
-      </View>
-
-      <View style={styles.micros}>
-        {MICROS.map(key => {
-          const info = NUTRIENTS[key];
-          const warn = info.kind === 'limit' && goals[key] > 0 && totals[key] > goals[key];
-          return (
-            <PressableScale
-              key={key}
-              onPress={() => onSelect(key)}
-              haptic="selection"
-              scaleTo={0.95}
-              style={[styles.micro, { backgroundColor: warn ? theme.warningSoft : theme.fill }]}
-              accessibilityLabel={`${info.label}: ${formatAmount(totals[key], info.unit)} of ${formatAmount(goals[key], info.unit)}`}
-            >
-              <View style={[styles.dot, { backgroundColor: theme[key] }]} />
-              <AppText variant="caption" tone="secondary">{info.label}</AppText>
-              <AppText variant="caption" weight="700" numeric color={warn ? theme.warning : theme.text}>
-                {formatNumber(totals[key])}
-                <AppText variant="caption" tone="tertiary" numeric>/{formatNumber(goals[key])}</AppText>
-              </AppText>
-            </PressableScale>
-          );
-        })}
-      </View>
+      {week && (
+        <Pressable
+          onPress={() => {
+            triggerHaptic('selection');
+            onOpenPlan();
+          }}
+          style={({ pressed }) => [styles.weekRow, { borderTopColor: theme.separator }, pressed && { backgroundColor: theme.fill }]}
+          accessibilityRole="button"
+          accessibilityHint="Opens your meal plan for the week"
+        >
+          <Ionicons name="calendar-outline" size={16} color={theme.brandText} />
+          <AppText variant="footnote" weight="600" tone="secondary" style={styles.flex} numberOfLines={1}>
+            {weekBrief(week)}
+          </AppText>
+          <Ionicons name="chevron-forward" size={14} color={theme.brandText} />
+        </Pressable>
+      )}
     </Card>
   );
 }
 
-function Stat({ icon, label, value, color, note }: {
-  icon: React.ComponentProps<typeof Ionicons>['name'];
-  label: string;
-  value: string;
-  color: string;
-  note?: string;
-}) {
+function Stat({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
-    <View style={styles.stat}>
-      <Ionicons name={icon} size={18} color={color} />
-      <View style={styles.flex}>
-        <AppText variant="caption" tone="secondary">{label}</AppText>
-        <AppText variant="headline" numeric>{value}</AppText>
-        {note ? <AppText variant="micro" tone="brand" numberOfLines={1}>{note}</AppText> : null}
-      </View>
+    <View>
+      <AppText variant="caption" tone="secondary">{label}</AppText>
+      <AppText variant="title3" numeric>{value}</AppText>
+      {note ? <AppText variant="caption" tone="brand" weight="600">{note}</AppText> : null}
     </View>
+  );
+}
+
+// Macros on the first row, fiber/sugar/sodium on a smaller second row, all on
+// the same three columns.
+function NutrientCell({ nutrient, total, goal, onPress, small }: {
+  nutrient: TrackedNutrient;
+  total: number;
+  goal: number;
+  onPress: () => void;
+  small?: boolean;
+}) {
+  const theme = useTheme();
+  const info = NUTRIENTS[nutrient];
+  const warn = info.kind === 'limit' && goal > 0 && total > goal;
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.cell, pressed && { opacity: 0.6 }]}
+      onPress={() => {
+        triggerHaptic('selection');
+        onPress();
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={`${info.label}: ${formatAmount(total, info.unit)} of ${formatAmount(goal, info.unit)}${info.kind === 'limit' ? ' limit' : ''}`}
+    >
+      <AppText variant="caption" tone="secondary">{info.label}</AppText>
+      <AppText variant={small ? 'subhead' : 'headline'} weight={small ? '600' : undefined} numeric numberOfLines={1} color={warn ? theme.warning : theme.text}>
+        {formatNumber(total)}
+        <AppText variant="caption" tone="tertiary" numeric>{` / ${formatNumber(goal)}${info.unit === 'mg' ? '' : ' g'}`}</AppText>
+      </AppText>
+      <ProgressBar progress={goal ? total / goal : 0} color={warn ? theme.warning : theme[nutrient]} height={small ? 4 : 6} />
+    </Pressable>
   );
 }
 
@@ -266,7 +279,7 @@ function RecentsRow({ date }: { date: string }) {
 
   return (
     <View>
-      <SectionHeader title="Eat it again" subtitle="One tap adds it to this day" style={styles.inset} />
+      <SectionHeader title="Eat it again" style={styles.inset} />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recents}>
         {items.map(item => (
           <PressableScale
@@ -275,16 +288,13 @@ function RecentsRow({ date }: { date: string }) {
             haptic="light"
             scaleTo={0.95}
             accessibilityLabel={`Log ${item.name}, ${formatTrackedCalories(item)}`}
-            style={[styles.recent, { backgroundColor: theme.surface, borderColor: theme.separator }, shadow(theme, 1)]}
+            style={[styles.recent, { backgroundColor: theme.surface, borderColor: theme.separator }]}
           >
-            <AppText variant="subhead" weight="600" numberOfLines={2} style={styles.recentName}>{item.name}</AppText>
-            <AppText variant="caption" tone="tertiary" numberOfLines={1}>{item.type === 'custom' ? 'My meal' : item.restaurant}</AppText>
-            <View style={styles.recentFooter}>
-              <AppText variant="footnote" weight="700" numeric tone="brand">{formatTrackedCalories(item)}</AppText>
-              <View style={[styles.recentAdd, { backgroundColor: theme.brandSoft }]}>
-                <Ionicons name="add" size={16} color={theme.brandText} />
-              </View>
+            <View style={styles.recentText}>
+              <AppText variant="subhead" weight="600" numberOfLines={1}>{item.name}</AppText>
+              <AppText variant="caption" tone="tertiary" numeric numberOfLines={1}>{formatTrackedCalories(item)}</AppText>
             </View>
+            <Ionicons name="add-circle" size={22} color={theme.brand} />
           </PressableScale>
         ))}
       </ScrollView>
@@ -295,11 +305,12 @@ function RecentsRow({ date }: { date: string }) {
 // ---- meals ----
 
 function MealSection({
-  meal, items, date, onAdd, onSelect,
+  meal, items, date, divider, onAdd, onSelect,
 }: {
   meal: (typeof MEALS)[number];
   items: TrackedItem[];
   date: string;
+  divider: boolean;
   onAdd: () => void;
   onSelect: (item: TrackedItem) => void;
 }) {
@@ -318,60 +329,51 @@ function MealSection({
   };
 
   return (
-    <Animated.View layout={LinearTransition.duration(220)}>
-      <Card padded={false} style={styles.mealCard}>
-        <View style={styles.mealHeader}>
-          <View style={[styles.mealIcon, { backgroundColor: theme.brandSoft }]}>
-            <Ionicons name={meal.icon} size={18} color={theme.brandText} />
-          </View>
-          <View style={styles.flex}>
-            <AppText variant="headline" accessibilityRole="header">{meal.label}</AppText>
-            <AppText variant="footnote" tone="secondary" numeric>
-              {items.length ? `${formatNumber(calories)} cal · ${items.length} item${items.length === 1 ? '' : 's'}` : 'Nothing yet'}
-            </AppText>
-          </View>
-          <IconButton icon="add" variant="filled" color={theme.brandText} accessibilityLabel={`Add to ${meal.label}`} onPress={onAdd} />
-        </View>
-        {items.map(item => (
-          <Animated.View key={item.id} entering={FadeInDown.duration(260)} exiting={FadeOut.duration(160)} layout={LinearTransition.duration(220)}>
-            <ReanimatedSwipeable
-              friction={2}
-              rightThreshold={40}
-              overshootRight={false}
-              renderRightActions={() => (
-                <Pressable
-                  onPress={() => remove(item)}
-                  style={[styles.deleteAction, { backgroundColor: theme.danger }]}
-                  accessibilityLabel={`Delete ${item.name}`}
-                >
-                  <Ionicons name="trash" size={20} color="#FFFFFF" />
-                  <AppText variant="caption" weight="700" color="#FFFFFF">Delete</AppText>
-                </Pressable>
-              )}
-            >
+    <Animated.View layout={LinearTransition.duration(220)} style={divider && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.separator }}>
+      <View style={styles.mealHeader}>
+        <Ionicons name={meal.icon} size={18} color={theme.brandText} />
+        <AppText variant="headline" accessibilityRole="header" style={styles.flex}>{meal.label}</AppText>
+        {items.length > 0 && (
+          <AppText variant="subhead" tone="secondary" numeric>{formatNumber(calories)} cal</AppText>
+        )}
+        <IconButton icon="add" size={32} variant="filled" color={theme.brandText} accessibilityLabel={`Add to ${meal.label}`} onPress={onAdd} />
+      </View>
+      {items.map(item => (
+        <Animated.View key={item.id} entering={FadeInDown.duration(260)} exiting={FadeOut.duration(160)} layout={LinearTransition.duration(220)}>
+          <ReanimatedSwipeable
+            friction={2}
+            rightThreshold={40}
+            overshootRight={false}
+            renderRightActions={() => (
               <Pressable
-                onPress={() => onSelect(item)}
-                style={({ pressed }) => [
-                  styles.itemRow,
-                  { backgroundColor: pressed ? theme.fill : theme.surface, borderTopColor: theme.separator },
-                ]}
-                accessibilityRole="button"
-                accessibilityHint="Shows details. Swipe left to delete."
+                onPress={() => remove(item)}
+                style={[styles.deleteAction, { backgroundColor: theme.danger }]}
+                accessibilityLabel={`Delete ${item.name}`}
               >
-                <View style={styles.flex}>
-                  <AppText variant="callout" weight="600" numberOfLines={1}>{item.name}</AppText>
-                  <AppText variant="footnote" tone="tertiary" numberOfLines={1}>
-                    {[timeLabel(item.timestamp), sourceLabel(item.restaurant), item.details].filter(Boolean).join(' · ')}
-                  </AppText>
-                </View>
-                <AppText variant="callout" weight="600" numeric tone={item.nutrition_status === 'none' ? 'tertiary' : 'primary'}>
-                  {formatTrackedCalories(item)}
-                </AppText>
+                <Ionicons name="trash" size={20} color="#FFFFFF" />
+                <AppText variant="caption" weight="700" color="#FFFFFF">Delete</AppText>
               </Pressable>
-            </ReanimatedSwipeable>
-          </Animated.View>
-        ))}
-      </Card>
+            )}
+          >
+            <Pressable
+              onPress={() => onSelect(item)}
+              style={({ pressed }) => [styles.itemRow, { backgroundColor: pressed ? theme.fill : theme.surface }]}
+              accessibilityRole="button"
+              accessibilityHint="Shows details. Swipe left to delete."
+            >
+              <View style={styles.flex}>
+                <AppText variant="callout" weight="500" numberOfLines={1}>{item.name}</AppText>
+                <AppText variant="footnote" tone="tertiary" numberOfLines={1}>
+                  {[timeLabel(item.timestamp), sourceLabel(item.restaurant), item.details].filter(Boolean).join(' · ')}
+                </AppText>
+              </View>
+              <AppText variant="subhead" weight="600" numeric tone={item.nutrition_status === 'none' ? 'tertiary' : 'primary'}>
+                {formatTrackedCalories(item)}
+              </AppText>
+            </Pressable>
+          </ReanimatedSwipeable>
+        </Animated.View>
+      ))}
     </Animated.View>
   );
 }
@@ -380,13 +382,16 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: space.lg,
     paddingTop: space.sm,
-    gap: space.xl,
+    gap: space.xxl,
   },
   flex: {
     flex: 1,
   },
   inset: {
     paddingHorizontal: space.xs,
+  },
+  clip: {
+    overflow: 'hidden',
   },
   summary: {
     padding: space.xl,
@@ -395,45 +400,30 @@ const styles = StyleSheet.create({
   summaryTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: space.xl,
+    gap: space.xxl,
   },
   summaryStats: {
     flex: 1,
-    gap: space.md,
-  },
-  stat: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.sm,
+    gap: space.lg,
   },
   divider: {
     height: StyleSheet.hairlineWidth,
   },
-  macros: {
+  nutrientGrid: {
     flexDirection: 'row',
     gap: space.lg,
   },
-  macro: {
+  cell: {
     flex: 1,
     gap: 4,
   },
-  micros: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: space.sm,
-  },
-  micro: {
+  weekRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: space.md,
-    height: 30,
-    borderRadius: radius.pill,
-  },
-  dot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
+    gap: space.sm,
+    paddingHorizontal: space.xl,
+    paddingVertical: space.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   welcome: {
     gap: space.lg,
@@ -446,59 +436,38 @@ const styles = StyleSheet.create({
     gap: space.md,
   },
   recents: {
-    gap: space.md,
+    gap: space.sm,
     paddingRight: space.lg,
-    paddingBottom: space.xs,
   },
   recent: {
-    width: 152,
-    borderRadius: radius.lg,
-    padding: space.md,
-    gap: 2,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  recentName: {
-    minHeight: 38,
-  },
-  recentFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: space.sm,
-  },
-  recentAdd: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  meals: {
     gap: space.md,
+    maxWidth: 230,
+    paddingLeft: space.md,
+    paddingRight: space.sm,
+    paddingVertical: space.sm,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
   },
-  mealCard: {
-    overflow: 'hidden',
+  recentText: {
+    flexShrink: 1,
   },
   mealHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.md,
-    padding: space.lg,
-  },
-  mealIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingLeft: space.lg,
+    paddingRight: space.md,
+    paddingVertical: space.md,
   },
   itemRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.md,
-    paddingHorizontal: space.lg,
-    paddingVertical: space.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingLeft: space.lg + 18 + space.md, // lines up with the meal name
+    paddingRight: space.lg,
+    paddingVertical: space.sm + 2,
   },
   deleteAction: {
     width: 88,

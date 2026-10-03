@@ -1,10 +1,12 @@
 import { AppText } from '@/components/ui/AppText';
 import { Card } from '@/components/ui/Card';
 import { ListGroup, ListRow } from '@/components/ui/ListRow';
+import { Segmented } from '@/components/ui/Segmented';
 import { useTabBarSpace } from '@/components/ui/TabBar';
 import { useToast } from '@/components/ui/Toast';
 import { formatNumber } from '@/constants/nutrients';
 import { radius, space, useTheme } from '@/constants/theme';
+import { appearanceStore, useAppearance } from '@/services/appearance';
 import { fastAccessService } from '@/services/FastAccessService';
 import { ACTIVITY_LEVELS, calculateGoals, goalsStore, useGoals, WEIGHT_GOALS } from '@/services/goals';
 import { menuDatabase, useMenuRevision } from '@/services/MenuDatabase';
@@ -25,6 +27,7 @@ export default function ProfileScreen() {
   const router = useRouter();
   const toast = useToast();
   const { goals, profile, planner } = useGoals();
+  const appearance = useAppearance();
   useMenuRevision();
   const [checking, setChecking] = useState(false);
 
@@ -71,24 +74,24 @@ export default function ProfileScreen() {
           <AppText variant="largeTitle" accessibilityRole="header">Profile</AppText>
         </View>
 
-        <Card style={[styles.plan, { backgroundColor: theme.scheme === 'dark' ? theme.brandStrong : theme.brand, borderColor: 'transparent' }]} onPress={() => router.push('/goals')} accessibilityLabel="Your daily plan. Edit targets">
+        <Card style={[styles.plan, { backgroundColor: theme.hero, borderColor: 'transparent' }]} onPress={() => router.push('/goals')} accessibilityLabel="Your daily plan. Edit targets">
           <View style={styles.planTop}>
             <View style={styles.flex}>
-              <AppText variant="footnote" weight="600" color={theme.onBrand} style={styles.planEyebrow}>
+              <AppText variant="footnote" weight="600" color={theme.onHero} style={styles.planEyebrow}>
                 {custom ? 'YOUR CUSTOM PLAN' : goal ? goal.label.toUpperCase() : 'YOUR DAILY PLAN'}
               </AppText>
-              <AppText variant="display" numeric color={theme.onBrand}>{formatNumber(goals.calories)}</AppText>
-              <AppText variant="subhead" color={theme.onBrand} style={styles.planSub}>calories a day</AppText>
+              <AppText variant="display" numeric color={theme.onHero}>{formatNumber(goals.calories)}</AppText>
+              <AppText variant="subhead" color={theme.onHero} style={styles.planSub}>calories a day</AppText>
             </View>
             <View style={[styles.editPill, { backgroundColor: 'rgba(255,255,255,0.18)' }]}>
-              <AppText variant="caption" weight="700" color={theme.onBrand}>Edit</AppText>
+              <AppText variant="caption" weight="700" color={theme.onHero}>Edit</AppText>
             </View>
           </View>
           <View style={styles.planMacros}>
             {(['protein', 'carbs', 'fat'] as const).map(key => (
               <View key={key} style={[styles.planMacro, { backgroundColor: 'rgba(255,255,255,0.14)' }]}>
-                <AppText variant="headline" numeric color={theme.onBrand}>{formatNumber(goals[key])} g</AppText>
-                <AppText variant="caption" color={theme.onBrand} style={styles.planSub}>
+                <AppText variant="headline" numeric color={theme.onHero}>{formatNumber(goals[key])} g</AppText>
+                <AppText variant="caption" color={theme.onHero} style={styles.planSub}>
                   {key === 'protein' ? 'Protein' : key === 'carbs' ? 'Carbs' : 'Fat'}
                 </AppText>
               </View>
@@ -113,6 +116,20 @@ export default function ProfileScreen() {
             onPress={() => router.push('/plan')}
             divider
           />
+        </ListGroup>
+
+        <ListGroup title="Appearance">
+          <View style={styles.appearance}>
+            <Segmented
+              options={[
+                { value: 'system', label: 'Automatic' },
+                { value: 'light', label: 'Light' },
+                { value: 'dark', label: 'Dark' },
+              ]}
+              value={appearance}
+              onChange={value => appearanceStore.set(value)}
+            />
+          </View>
         </ListGroup>
 
         <ListGroup title="Dining data" footer="Menus refresh automatically a few times a day.">
@@ -190,6 +207,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     paddingVertical: space.sm,
     paddingHorizontal: space.md,
+  },
+  appearance: {
+    padding: space.md,
   },
   footer: {
     gap: space.xs,
