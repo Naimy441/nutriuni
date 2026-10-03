@@ -17,6 +17,75 @@ From the menu bar, open Product > Build
 From the menu bar, open Product > Archive
 Validate then Distribute
 
+## Menu data
+
+Menus come from the duke_halal repository, which merges Mobile Order menus
+(dishes and their options) with Duke NetNutrition labels three times a day
+(`src/build_nutriuni_menus.py` there) and commits them to
+`outputs/nutriuni/` on GitHub.
+
+### Live updates (Firebase project `nutriuni-8166c`)
+
+```
+GitHub Action (3x/day) ──commit──▶ outputs/nutriuni/ on GitHub
+                                        │  polled every 15 min
+                                        ▼
+                    Cloud Function syncMenus (functions/)
+                    verifies hashes, writes one atomic batch
+                                        ▼
+        Firestore  menu_meta/current  +  menu_restaurants/{id}
+                                        │  get-only (firestore.rules)
+                                        ▼
+        App: services/MenuDatabase.ts  bundled → cached → live
+```
+
+- **syncMenus** downloads `index.json`, then only restaurants whose content
+  hash changed, checks every file's bytes against the index, refuses schema
+  changes and scrapes that lose most restaurants, and publishes everything in
+  one batch so readers never see a half-updated menu. No Google credentials
+  live in GitHub; the function uses its own service account.
+- **Security:** clients can only `get` the menu documents by id. Listing and
+  all writes are denied (`firestore.rules`); the function's URL rejects
+  unauthenticated calls.
+- **The app** opens instantly from the bundled snapshot or the last download
+  (AsyncStorage), checks Firestore at launch and when returning to the
+  foreground (at most every 10 minutes, or by pulling down on the Menus tab),
+  downloads only changed restaurants, and swaps them in all at once. Offline
+  it keeps working on what it has.
+
+Deploy backend changes with:
+
+```bash
+firebase deploy --only firestore:rules,firestore:indexes,functions
+```
+
+Check the live data as an anonymous client would (contents match GitHub,
+documents match their versions, rules deny listing and writes):
+
+```bash
+node scripts/check-firestore-menus.mjs
+```
+
+Function logs: `firebase functions:log --only syncMenus`. Sync logic tests:
+`npm --prefix functions test`.
+
+### Bundled snapshot
+
+Each release ships a snapshot so first launch works offline. To refresh it
+before building a release:
+
+```bash
+scripts/sync-menu-data.sh ../../duke_halal
+```
+
+This copies `outputs/nutriuni/` into `assets/menu/` and regenerates
+`assets/menu/registry.ts`. To check the bundled data against the app's
+nutrition engine (references, plausible totals, hand-worked orders):
+
+```bash
+npx tsc -p scripts/tsconfig.verify.json && node .verify/scripts/verify-menu-data.js
+```
+
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
 ## Get started

@@ -7,6 +7,14 @@ import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { ThemedText } from './ThemedText';
 import { ThemedView } from './ThemedView';
 
+const STATUS_NOTES: Record<NonNullable<TrackedItem['nutrition_status']>, string> = {
+  complete: '',
+  estimated: 'Estimated by adding up the NetNutrition labels for each part of this order.',
+  partial: 'Some options in this order had no published label and are not counted.',
+  manual: 'Nutrition entered by you.',
+  none: 'Logged without nutrition info. It does not count toward your totals.',
+};
+
 interface TrackedItemModalProps {
   visible: boolean;
   trackedItem: TrackedItem | null;
@@ -101,6 +109,17 @@ export function TrackedItemModal({ visible, trackedItem, onClose }: TrackedItemM
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={true}
       >
+        {trackedItem.details ? (
+          <View style={styles.servingContainer}>
+            <ThemedText style={styles.servingText}>{trackedItem.details}</ThemedText>
+          </View>
+        ) : null}
+
+        {STATUS_NOTES[trackedItem.nutrition_status ?? 'complete'] ? (
+          <ThemedText style={styles.statusNote}>{STATUS_NOTES[trackedItem.nutrition_status ?? 'complete']}</ThemedText>
+        ) : null}
+
+        {trackedItem.nutrition_status !== 'none' && (<>
         {/* Calories - First Priority */}
         <ThemedView style={styles.caloriesContainer}>
           <View style={styles.caloriesRow}>
@@ -143,6 +162,7 @@ export function TrackedItemModal({ visible, trackedItem, onClose }: TrackedItemM
             {renderNutrientRow('Sodium', trackedItem.sodium, 'mg')}
           </View>
         </ThemedView>
+        </>)}
       </BottomSheetScrollView>
     </BottomSheetModal>
   );
@@ -194,6 +214,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     opacity: 0.7,
     lineHeight: 18,
+  },
+  statusNote: {
+    fontSize: 13,
+    lineHeight: 18,
+    opacity: 0.7,
+    marginBottom: 16,
+    fontStyle: 'italic',
   },
   closeButton: {
     width: 28,

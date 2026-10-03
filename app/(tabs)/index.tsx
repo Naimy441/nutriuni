@@ -9,7 +9,7 @@ import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { TrackedItemModal } from '@/components/TrackedItemModal';
 import { Colors } from '@/constants/Colors';
-import { nutritionTracker, TrackedItem, useNutritionTracker } from '@/services/NutritionTracker';
+import { formatTrackedCalories, nutritionTracker, TrackedItem, useNutritionTracker } from '@/services/NutritionTracker';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
@@ -326,8 +326,11 @@ export default function HomeScreen() {
                         onPress={() => handleItemPress(item)}
                       >
                         <ThemedText style={styles.itemName}>{item.name}</ThemedText>
+                        {item.details ? (
+                          <ThemedText style={styles.itemDetails} numberOfLines={1}>{item.details}</ThemedText>
+                        ) : null}
                         <ThemedText style={styles.itemDetails}>
-                          {item.restaurant} • {item.calories} cal • {item.serving_size}
+                          {item.restaurant} • {formatTrackedCalories(item)} • {item.serving_size}
                         </ThemedText>
                       </TouchableOpacity>
                       <TouchableOpacity 

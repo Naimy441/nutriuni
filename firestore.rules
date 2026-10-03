@@ -1,0 +1,21 @@
+rules_version = '2';
+
+// Menus are public, read-only data. They are written only by the syncMenus
+// Cloud Function through the Admin SDK, which bypasses these rules.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Clients may fetch known documents by id, but never list a collection
+    // (each app reads the index first, then only the restaurants it needs).
+    match /menu_meta/current {
+      allow get: if true;
+    }
+    match /menu_restaurants/{restaurantId} {
+      allow get: if true;
+    }
+
+    // Everything else is closed to clients.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

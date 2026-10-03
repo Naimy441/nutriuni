@@ -1,0 +1,9 @@
+{
+  "indexes": [],
+  "fieldOverrides": [
+    { "collectionGroup": "menu_restaurants", "fieldPath": "data", "indexes": [] },
+    { "collectionGroup": "menu_restaurants", "fieldPath": "icon", "indexes": [] },
+    { "collectionGroup": "menu_meta", "fieldPath": "index", "indexes": [] },
+    { "collectionGroup": "menu_meta", "fieldPath": "versions", "indexes": [] }
+  ]
+}

@@ -23,43 +23,10 @@ export function FastAccessSection() {
 
   const handleFastAccessItemPress = async (item: FastAccessItem) => {
     try {
-      const trackedItem = fastAccessService.fastAccessItemToTrackedItem(item);
-      
-      if (item.type === 'custom') {
-        // For custom meals, use the custom meal data format
-        const customMealData: CustomMealData = {
-          name: item.name,
-          calories: item.calories,
-          protein: item.protein,
-          carbs: item.carbs,
-          fat: item.fat,
-          fiber: item.fiber,
-          sugar: item.sugar,
-          sodium: item.sodium,
-          serving_size: item.serving_size,
-        };
-        await addCustomMeal(customMealData);
-      } else {
-        // For restaurant items, we need to simulate a MenuItem
-        const menuItem = {
-          name: item.name,
-          nutrition: {
-            calories: item.calories,
-            serving_info: {
-              serving_size: item.serving_size,
-            },
-            nutrition_facts: {
-              'Protein': { amount: item.protein },
-              'Total Carbohydrate': { amount: item.carbs },
-              'Total Fat': { amount: item.fat },
-              'Dietary Fiber': { amount: item.fiber },
-              'Total Sugars': { amount: item.sugar },
-              'Sodium': { amount: item.sodium },
-            }
-          }
-        };
-        await addItem(menuItem as any, item.restaurant);
-      }
+      await addItem({
+        ...fastAccessService.fastAccessItemToTrackedItem(item),
+        nutrition_status: item.nutrition_status ?? (item.type === 'custom' ? 'manual' : 'complete'),
+      });
       
       Alert.alert('Added!', `${item.name} has been added to today's log.`);
     } catch (error) {
@@ -91,6 +58,8 @@ export function FastAccessSection() {
       sodium: item.sodium,
       serving_size: item.serving_size,
       timestamp: item.lastUsed,
+      details: item.details,
+      nutrition_status: item.nutrition_status,
     };
     
     setSelectedItem(trackedItem);
@@ -111,7 +80,7 @@ export function FastAccessSection() {
         </ThemedText>
         <View style={styles.itemDetails}>
           <ThemedText style={styles.caloriesText}>
-            {item.calories} cal
+            {item.nutrition_status === 'none' ? 'No nutrition' : `${item.calories} cal`}
           </ThemedText>
         </View>
       </View>

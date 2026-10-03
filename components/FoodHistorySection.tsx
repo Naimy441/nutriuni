@@ -1,6 +1,6 @@
 import { Colors } from '@/constants/Colors';
 import { HistoryDay, useFoodHistory } from '@/services/FoodHistoryService';
-import { TrackedItem } from '@/services/NutritionTracker';
+import { formatTrackedCalories, TrackedItem } from '@/services/NutritionTracker';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import { StyleSheet, TouchableOpacity, View } from 'react-native';
@@ -67,7 +67,7 @@ export function FoodHistorySection({ onViewAllHistory }: FoodHistorySectionProps
         <View style={styles.foodItemInfo}>
           <ThemedText style={styles.foodItemName}>{item.name}</ThemedText>
           <ThemedText style={styles.foodItemDetails}>
-            {item.restaurant} • {item.calories} cal • {time}
+            {item.restaurant} • {formatTrackedCalories(item)} • {time}
           </ThemedText>
         </View>
         <Ionicons name="chevron-forward" size={16} color={Colors.primary} />

@@ -1,441 +1,331 @@
-import { NutritionModal } from '@/components/NutritionModal';
+import { CaloriePill } from '@/components/CaloriePill';
+import { MenuItemSheet } from '@/components/MenuItemSheet';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { menuDatabase, MenuItem, Restaurant } from '@/services/MenuDatabase';
-import { useNutritionTracker } from '@/services/NutritionTracker';
+import { menuDatabase, openStatus, todaysHours, useClock, useMenuRevision } from '@/services/MenuDatabase';
+import { quickLogEntry } from '@/services/menuLogging';
+import { canQuickLog, describePreview } from '@/services/menuNutrition';
+import type { MenuItem, MenuSection, RestaurantMenu } from '@/services/menuTypes';
+import { nutritionTracker, TrackedItem } from '@/services/NutritionTracker';
 import { EvilIcons, Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Animated, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Animated, ScrollView, SectionList, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+const ALL = '__all__';
 
 export default function RestaurantPage() {
-  const { name } = useLocalSearchParams<{ name: string }>();
+  const { name, item: itemParam } = useLocalSearchParams<{ name: string; item?: string }>();
   const router = useRouter();
   const colorScheme = useColorScheme();
-  const { addItem, removeItem, todaysItems } = useNutritionTracker();
-  
-  const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
-  const [preSearchExpandedCategories, setPreSearchExpandedCategories] = useState<Set<string> | null>(null);
-  const [selectedMenuItem, setSelectedMenuItem] = useState<MenuItem | null>(null);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [addingItems, setAddingItems] = useState<Set<string>>(new Set());
-  const [undoItem, setUndoItem] = useState<{menuItem: MenuItem, restaurantName: string, timestamp: number} | null>(null);
-  const [showUndo, setShowUndo] = useState(false);
+  const isDark = colorScheme === 'dark';
+  const insets = useSafeAreaInsets();
+  const now = useClock();
+
+  const revision = useMenuRevision();
+  const menu = useMemo(
+    () => (name ? menuDatabase.loadRestaurant(decodeURIComponent(name)) : null),
+    // Newer menus from Firestore replace this restaurant's data.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [name, revision],
+  );
+  const summary = menu ? menuDatabase.getSummary(menu.id) : undefined;
+  const icon = menu ? menuDatabase.icon(menu.id) : undefined;
+
   const [searchQuery, setSearchQuery] = useState('');
-  const undoOpacity = useRef(new Animated.Value(0)).current;
-  const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [activeSection, setActiveSection] = useState(ALL);
+  const [onlyWithNutrition, setOnlyWithNutrition] = useState(false);
+  // The open sheet keeps the menu it was opened from, even if newer data arrives.
+  const [selected, setSelected] = useState<{ menu: RestaurantMenu; item: MenuItem } | null>(null);
+  const [toast, setToast] = useState<TrackedItem | null>(null);
+  const [addingId, setAddingId] = useState<string | null>(null);
+  const toastOpacity = useRef(new Animated.Value(0)).current;
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Opened from a dish search result: show that dish straight away, once.
+  // (Re-running would re-open it later, e.g. from underneath another screen.)
+  const openedItemParam = useRef<string | null>(null);
   useEffect(() => {
-    loadRestaurant();
-  }, [name]);
+    if (!menu || !itemParam || openedItemParam.current === itemParam) return;
+    openedItemParam.current = itemParam;
+    const target = menu.sections.flatMap(s => s.items).find(i => i.id === itemParam);
+    if (target) setSelected({ menu, item: target });
+  }, [menu, itemParam]);
 
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (undoTimeoutRef.current) {
-        clearTimeout(undoTimeoutRef.current);
-      }
-    };
+  useEffect(() => () => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
   }, []);
 
-  const loadRestaurant = async () => {
-    if (!name) return;
-    
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const restaurantData = await menuDatabase.loadRestaurant(name);
-      if (restaurantData) {
-        setRestaurant(restaurantData);
-      } else {
-        setError('Restaurant not found');
-      }
-    } catch (err) {
-      setError('Failed to load restaurant');
-      console.error('Error loading restaurant:', err);
-    } finally {
-      setLoading(false);
-    }
+  const previews = useMemo(() => {
+    const map = new Map<MenuItem, ReturnType<typeof describePreview>>();
+    menu?.sections.forEach(section => section.items.forEach(item => map.set(item, describePreview(menu, item))));
+    return map;
+  }, [menu]);
+
+  const sections = useMemo(() => {
+    if (!menu) return [];
+    const query = searchQuery.trim().toLowerCase();
+    return menu.sections
+      .filter(section => activeSection === ALL || section.name === activeSection)
+      .map(section => ({
+        ...section,
+        data: section.items.filter(item => {
+          if (onlyWithNutrition && previews.get(item)?.kind === 'none') return false;
+          if (!query) return true;
+          return item.name.toLowerCase().includes(query) || (item.description ?? '').toLowerCase().includes(query);
+        }),
+      }))
+      .filter(section => section.data.length > 0);
+  }, [menu, searchQuery, activeSection, onlyWithNutrition, previews]);
+
+  const showToast = (entry: TrackedItem) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast(entry);
+    Animated.timing(toastOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+    toastTimer.current = setTimeout(hideToast, 4000);
   };
 
-  const toggleCategory = (categoryName: string) => {
-    const newExpanded = new Set(expandedCategories);
-    if (newExpanded.has(categoryName)) {
-      newExpanded.delete(categoryName);
-    } else {
-      newExpanded.add(categoryName);
-    }
-    setExpandedCategories(newExpanded);
-  };
-
-  // Filter categories and items based on search query
-  const getFilteredCategories = () => {
-    if (!restaurant) return [];
-    
-    if (!searchQuery.trim()) {
-      return restaurant.categories;
-    }
-
-    const query = searchQuery.toLowerCase().trim();
-    const filteredCategories = [];
-
-    for (const category of restaurant.categories) {
-      // Filter meals in this category that match the search
-      const matchingMeals = category.meals.filter(meal =>
-        meal.name.toLowerCase().includes(query) ||
-        (meal.description && meal.description.toLowerCase().includes(query))
-      );
-
-      // If category has matching meals, include it
-      if (matchingMeals.length > 0) {
-        filteredCategories.push({
-          ...category,
-          meals: matchingMeals
-        });
-      }
-    }
-
-    return filteredCategories;
-  };
-
-  // Auto-expand categories that have search matches and restore state when clearing
-  useEffect(() => {
-    if (!restaurant) return;
-
-    if (searchQuery.trim()) {
-      // Save current expanded state before searching (only on first search)
-      if (preSearchExpandedCategories === null) {
-        setPreSearchExpandedCategories(new Set(expandedCategories));
-      }
-      
-      // Auto-expand categories with matches
-      const filteredCategories = getFilteredCategories();
-      const categoriesToExpand = new Set(filteredCategories.map(cat => cat.name));
-      setExpandedCategories(categoriesToExpand);
-    } else {
-      // Restore previous expanded state when clearing search (if we have saved state)
-      if (preSearchExpandedCategories !== null) {
-        setExpandedCategories(new Set(preSearchExpandedCategories));
-        setPreSearchExpandedCategories(null); // Clear the saved state
-      }
-      // If no saved state, keep current expanded state (don't change anything)
-    }
-  }, [searchQuery, restaurant]);
-
-  const handleMenuItemPress = (menuItem: MenuItem) => {
-    setSelectedMenuItem(menuItem);
-    setModalVisible(true);
-  };
-
-  const showUndoNotification = (menuItem: MenuItem, restaurantName: string) => {
-    // Clear any existing timeout
-    if (undoTimeoutRef.current) {
-      clearTimeout(undoTimeoutRef.current);
-    }
-
-    // Set undo item data
-    setUndoItem({ menuItem, restaurantName, timestamp: Date.now() });
-    setShowUndo(true);
-
-    // Animate in
-    Animated.timing(undoOpacity, {
-      toValue: 1,
-      duration: 300,
-      useNativeDriver: true,
-    }).start();
-
-    // Auto hide after 4 seconds
-    undoTimeoutRef.current = setTimeout(() => {
-      hideUndoNotification();
-    }, 4000);
-  };
-
-  const hideUndoNotification = () => {
-    Animated.timing(undoOpacity, {
-      toValue: 0,
-      duration: 300,
-      useNativeDriver: true,
-    }).start(() => {
-      setShowUndo(false);
-      setUndoItem(null);
-    });
-
-    if (undoTimeoutRef.current) {
-      clearTimeout(undoTimeoutRef.current);
-      undoTimeoutRef.current = null;
+  const hideToast = () => {
+    Animated.timing(toastOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => setToast(null));
+    if (toastTimer.current) {
+      clearTimeout(toastTimer.current);
+      toastTimer.current = null;
     }
   };
 
   const handleUndo = async () => {
-    if (!undoItem) return;
-
+    if (!toast) return;
     try {
-      // Find the most recently added item that matches
-      const recentItem = todaysItems
-        .filter(item => item.name === undoItem.menuItem.name && item.restaurant === undoItem.restaurantName)
-        .sort((a, b) => b.timestamp - a.timestamp)[0];
-
-      if (recentItem) {
-        await removeItem(recentItem.id);
-        hideUndoNotification();
-      }
+      await nutritionTracker.removeItem(toast.id);
+      hideToast();
     } catch (error) {
       console.error('Error undoing item:', error);
       Alert.alert('Error', 'Failed to undo. Please try removing the item manually.');
     }
   };
 
-  const handleAddItem = async (menuItem: MenuItem) => {
-    if (!restaurant) return;
-    
-    const itemKey = `${restaurant.name}_${menuItem.name}`;
-    setAddingItems(prev => new Set(prev).add(itemKey));
-    
+  const handleQuickAdd = async (item: MenuItem) => {
+    if (!menu) return;
+    // Dishes that need a choice (or have no label yet) open the sheet instead.
+    if (!canQuickLog(menu, item)) {
+      setSelected({ menu, item });
+      return;
+    }
+    setAddingId(item.id);
     try {
-      await addItem(menuItem, restaurant.name);
-      
-      // Show undo notification instead of alert
-      showUndoNotification(menuItem, restaurant.name);
+      const tracked = await nutritionTracker.addTrackedItem(quickLogEntry(menu, item));
+      showToast(tracked);
     } catch (error) {
       console.error('Error adding item:', error);
-      Alert.alert(
-        'Error',
-        'Failed to add item to your daily intake. Please try again.',
-        [{ text: 'OK' }]
-      );
+      Alert.alert('Error', 'Failed to add item to your daily intake. Please try again.');
     } finally {
-      setAddingItems(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(itemKey);
-        return newSet;
-      });
+      setAddingId(null);
     }
   };
 
-  const renderMenuItem = (menuItem: MenuItem) => {
-    const itemKey = restaurant ? `${restaurant.name}_${menuItem.name}` : menuItem.name;
-    const isAdding = addingItems.has(itemKey);
+  const header = (
+    <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+      <TouchableOpacity
+        // Opened from a link there may be no screen to go back to.
+        onPress={() => (router.canGoBack() ? router.back() : router.replace('/menus'))}
+        style={styles.backButton}
+        accessibilityLabel="Back"
+      >
+        <Ionicons name="chevron-back" size={24} color={Colors.primary} />
+        <ThemedText style={styles.backText}>Menus</ThemedText>
+      </TouchableOpacity>
+    </View>
+  );
 
+  if (!menu) {
     return (
-      <View key={menuItem.name} style={styles.menuItemContainer}>
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={() => handleMenuItemPress(menuItem)}
-        >
-          <View style={styles.menuItemContent}>
-            <View style={styles.menuItemTitleRow}>
-              <ThemedText style={styles.menuItemName}>{menuItem.name}</ThemedText>
-              {menuItem.is_halal && (
-                <View style={styles.halalBadge}>
-                  <ThemedText style={styles.halalText}>Halal</ThemedText>
-                </View>
-              )}
-            </View>
-            <View style={styles.menuItemDetails}>
-              <ThemedText style={styles.menuItemCalories}>
-                {menuItem.nutrition.calories} cal
-              </ThemedText>
-              <ThemedText style={styles.menuItemServing}>
-                {menuItem.nutrition.serving_info.serving_size}
-              </ThemedText>
-            </View>
+      <ThemedView style={styles.container}>
+        {header}
+        <View style={styles.centered}>
+          <ThemedText style={styles.emptyTitle}>Restaurant not found</ThemedText>
+        </View>
+      </ThemedView>
+    );
+  }
+
+  const status = menu.hours ? openStatus(menu.hours, now) : null;
+  const hoursLine = menu.hours ? todaysHours(menu.hours, now) : menu.hours_text;
+  const coverage = menu.stats.items ? menu.stats.with_nutrition / menu.stats.items : 0;
+  const chipBorder = isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)';
+
+  const renderItem = ({ item }: { item: MenuItem }) => {
+    const preview = previews.get(item) ?? { kind: 'none' as const };
+    const adding = addingId === item.id;
+    return (
+      <View style={[styles.itemRow, { borderBottomColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
+        <TouchableOpacity style={styles.itemMain} onPress={() => setSelected({ menu, item })} accessibilityRole="button">
+          <View style={styles.itemTitleRow}>
+            <ThemedText style={styles.itemName}>{item.name}</ThemedText>
+            {item.halal && (
+              <View style={styles.halalBadge}>
+                <ThemedText style={styles.halalText}>Halal</ThemedText>
+              </View>
+            )}
           </View>
-          <View style={styles.menuItemArrow}>
-            <ThemedText style={styles.arrowText}>→</ThemedText>
+          {item.description ? (
+            <ThemedText style={styles.itemDescription} numberOfLines={2}>{item.description}</ThemedText>
+          ) : null}
+          <View style={styles.itemMeta}>
+            <CaloriePill kind={preview.kind} calories={preview.calories} />
+            {item.price !== undefined && <ThemedText style={styles.price}>${item.price.toFixed(2)}</ThemedText>}
+            {item.options?.length ? (
+              <ThemedText style={styles.customizable}>Customizable</ThemedText>
+            ) : null}
           </View>
         </TouchableOpacity>
-        
-        {/* Add Button */}
         <TouchableOpacity
-          style={[styles.addButton, isAdding && styles.addButtonLoading]}
-          onPress={() => handleAddItem(menuItem)}
-          disabled={isAdding}
+          style={[styles.addButton, adding && styles.addButtonBusy]}
+          onPress={() => handleQuickAdd(item)}
+          disabled={adding}
+          accessibilityLabel={`Add ${item.name}`}
         >
-          <Ionicons 
-            name={isAdding ? "hourglass" : "add"} 
-            size={20} 
-            color="#FFFFFF" 
-          />
+          <Ionicons name={adding ? 'hourglass' : 'add'} size={22} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
     );
   };
 
-  const renderCategory = (category: { name: string; meals: MenuItem[] }) => {
-    const isExpanded = expandedCategories.has(category.name);
-    
-    return (
-      <ThemedView key={category.name} style={styles.categoryCard}>
-        <TouchableOpacity
-          style={styles.categoryHeader}
-          onPress={() => toggleCategory(category.name)}
-        >
-          <View style={styles.categoryInfo}>
-            <ThemedText style={styles.categoryName}>{category.name}</ThemedText>
-            <ThemedText style={styles.categoryCount}>
-              {category.meals.length} items
-            </ThemedText>
-          </View>
-          <View style={styles.expandButton}>
-            <ThemedText style={styles.expandIcon}>
-              {isExpanded ? '−' : '+'}
-            </ThemedText>
-          </View>
-        </TouchableOpacity>
-        
-        {isExpanded && (
-          <View style={styles.categoryContent}>
-            {category.meals.map(renderMenuItem)}
-          </View>
-        )}
-      </ThemedView>
-    );
-  };
-
-  if (loading) {
-    return (
-      <ThemedView style={styles.container}>
-        <ThemedView style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <ThemedText style={styles.backText}>← Back</ThemedText>
-          </TouchableOpacity>
-        </ThemedView>
-        <ThemedView style={styles.loadingContainer}>
-          <ThemedText style={styles.loadingText}>Loading restaurant...</ThemedText>
-        </ThemedView>
-      </ThemedView>
-    );
-  }
-
-  if (error || !restaurant) {
-    return (
-      <ThemedView style={styles.container}>
-        <ThemedView style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <ThemedText style={styles.backText}>← Back</ThemedText>
-          </TouchableOpacity>
-        </ThemedView>
-        <ThemedView style={styles.loadingContainer}>
-          <ThemedText style={styles.errorText}>{error || 'Restaurant not found'}</ThemedText>
-        </ThemedView>
-      </ThemedView>
-    );
-  }
+  const renderSectionHeader = ({ section }: { section: MenuSection }) => (
+    <ThemedView style={styles.sectionHeader}>
+      <ThemedText style={styles.sectionTitle}>{section.name}</ThemedText>
+    </ThemedView>
+  );
 
   return (
     <ThemedView style={styles.container}>
-      {/* Header */}
-      <ThemedView style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <ThemedText style={styles.backText}>← Back</ThemedText>
-        </TouchableOpacity>
-        <View style={styles.headerContent}>
-          <ThemedText type="title" style={styles.restaurantTitle}>
-            {restaurant.name}
-          </ThemedText>
-          <ThemedText style={styles.restaurantHours}>
-            {restaurant.hours}
-          </ThemedText>
-          <ThemedText style={styles.restaurantStats}>
-            {restaurant.categories.length} categories
-          </ThemedText>
-        </View>
-      </ThemedView>
-
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <View style={styles.searchInputContainer}>
-          <View style={styles.searchIconContainer}>
-            <EvilIcons 
-              name="search" 
-              size={20} 
-              color={colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.6)' : 'rgba(60, 60, 67, 0.6)'} 
-            />
+      {header}
+      <View style={styles.hero}>
+        {icon ? (
+          <Image source={icon} style={[styles.heroIcon, styles.iconImage]} contentFit="contain" />
+        ) : (
+          <View style={[styles.heroIcon, styles.heroIconFallback]}>
+            <Ionicons name="restaurant" size={24} color="#fff" />
           </View>
-          <TextInput
-            style={[
-              styles.searchInput,
-              {
-                backgroundColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(118, 118, 128, 0.12)',
-                color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
-              }
-            ]}
-            placeholder="Search food items..."
-            placeholderTextColor={colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.6)' : 'rgba(60, 60, 67, 0.6)'}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            returnKeyType="search"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity 
-              style={styles.clearButton}
-              onPress={() => setSearchQuery('')}
-            >
-              <EvilIcons 
-                name="close" 
-                size={20} 
-                color={colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.6)' : 'rgba(60, 60, 67, 0.6)'} 
-              />
-            </TouchableOpacity>
-          )}
+        )}
+        <View style={styles.heroText}>
+          <ThemedText style={styles.restaurantTitle} numberOfLines={2}>{menu.name}</ThemedText>
+          {status?.label ? (
+            <View style={styles.statusRow}>
+              <View style={[styles.statusDot, { backgroundColor: status.isOpen ? '#2F9E44' : '#999' }]} />
+              <ThemedText style={styles.statusText}>{status.label}</ThemedText>
+              {hoursLine ? <ThemedText style={styles.hoursText} numberOfLines={1}>· {hoursLine}</ThemedText> : null}
+            </View>
+          ) : hoursLine ? (
+            <ThemedText style={styles.statusText}>{hoursLine}</ThemedText>
+          ) : null}
+          <ThemedText style={styles.coverageText}>
+            {menu.stats.with_nutrition
+              ? `Nutrition for ${menu.stats.with_nutrition} of ${menu.stats.items} items (${Math.round(coverage * 100)}%)`
+              : 'No nutrition published yet. You can still log meals.'}
+          </ThemedText>
         </View>
       </View>
 
-      {/* Categories */}
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        <View style={styles.categoriesContainer}>
-          {getFilteredCategories().length > 0 ? (
-            getFilteredCategories().map(renderCategory)
-          ) : searchQuery.trim() ? (
-            <View style={styles.noResultsContainer}>
-              <ThemedText style={styles.noResultsText}>
-                No food items found matching "{searchQuery}"
-              </ThemedText>
-              <ThemedText style={styles.noResultsSubtext}>
-                Try a different search term or browse all categories
-              </ThemedText>
-            </View>
-          ) : (
-            restaurant.categories.map(renderCategory)
-          )}
+      <View style={styles.searchContainer}>
+        <View style={styles.searchIconContainer}>
+          <EvilIcons name="search" size={20} color={isDark ? 'rgba(255,255,255,0.6)' : 'rgba(60,60,67,0.6)'} />
         </View>
+        <TextInput
+          style={[
+            styles.searchInput,
+            {
+              backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(118,118,128,0.12)',
+              color: isDark ? '#FFFFFF' : '#000000',
+            },
+          ]}
+          placeholder={`Search ${menu.name}`}
+          placeholderTextColor={isDark ? 'rgba(255,255,255,0.6)' : 'rgba(60,60,67,0.6)'}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          returnKeyType="search"
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity style={styles.clearButton} onPress={() => setSearchQuery('')} accessibilityLabel="Clear search">
+            <EvilIcons name="close" size={20} color={isDark ? 'rgba(255,255,255,0.6)' : 'rgba(60,60,67,0.6)'} />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chips} contentContainerStyle={styles.chipsContent}>
+        {menu.stats.with_nutrition > 0 && menu.stats.with_nutrition < menu.stats.items && (
+          <TouchableOpacity
+            style={[styles.chip, { borderColor: chipBorder }, onlyWithNutrition && styles.chipActive]}
+            onPress={() => setOnlyWithNutrition(v => !v)}
+          >
+            <Ionicons name="nutrition-outline" size={14} color={onlyWithNutrition ? '#fff' : Colors.primary} />
+            <ThemedText style={[styles.chipText, onlyWithNutrition && styles.chipTextActive]}>Has nutrition</ThemedText>
+          </TouchableOpacity>
+        )}
+        {[{ name: ALL }, ...menu.sections].map(section => {
+          const active = activeSection === section.name;
+          return (
+            <TouchableOpacity
+              key={section.name}
+              style={[styles.chip, { borderColor: chipBorder }, active && styles.chipActive]}
+              onPress={() => setActiveSection(active ? ALL : section.name)}
+            >
+              <ThemedText style={[styles.chipText, active && styles.chipTextActive]}>
+                {section.name === ALL ? 'All' : section.name}
+              </ThemedText>
+            </TouchableOpacity>
+          );
+        })}
       </ScrollView>
 
-      {/* Bottom Sheet Modal */}
-      <NutritionModal
-        visible={modalVisible}
-        menuItem={selectedMenuItem}
-        onClose={() => {
-          setModalVisible(false);
-          setSelectedMenuItem(null);
-        }}
-        restaurantName={restaurant?.name}
+      <SectionList
+        sections={sections}
+        keyExtractor={item => item.id}
+        renderItem={renderItem}
+        renderSectionHeader={renderSectionHeader}
+        stickySectionHeadersEnabled
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
+        ListEmptyComponent={
+          <View style={styles.centered}>
+            <ThemedText style={styles.emptyTitle}>No dishes match</ThemedText>
+            <ThemedText style={styles.emptySubtitle}>Try another search or clear the filters.</ThemedText>
+          </View>
+        }
+        ListFooterComponent={
+          summary?.source === 'netnutrition' ? (
+            <ThemedText style={styles.footerNote}>
+              {"This dining hall isn't on Mobile Order, so its menu lists everything Duke NetNutrition has published for it."}
+            </ThemedText>
+          ) : menu.nutrition_sources.length ? (
+            <ThemedText style={styles.footerNote}>
+              Menu from Mobile Order. Nutrition from Duke NetNutrition labels, matched to each dish and option.
+            </ThemedText>
+          ) : null
+        }
       />
 
-      {/* Undo Notification */}
-      {showUndo && undoItem && (
-        <Animated.View 
-          style={[
-            styles.undoContainer,
-            { opacity: undoOpacity }
-          ]}
-        >
-          <View style={styles.undoContent}>
-            <ThemedText style={styles.undoText}>
-              Added {undoItem.menuItem.name}
-            </ThemedText>
-            <TouchableOpacity onPress={handleUndo} style={styles.undoButton}>
-              <ThemedText style={styles.undoButtonText}>UNDO</ThemedText>
-            </TouchableOpacity>
-          </View>
+      <MenuItemSheet
+        menu={selected?.menu ?? null}
+        item={selected?.item ?? null}
+        onClose={() => setSelected(null)}
+        onLogged={showToast}
+      />
+
+      {toast && (
+        <Animated.View style={[styles.toast, { opacity: toastOpacity, bottom: insets.bottom + 24 }]}>
+          <ThemedText style={styles.toastText} numberOfLines={2}>
+            Logged {toast.name}
+            {toast.nutrition_status === 'none' ? '' : ` · ${toast.calories.toLocaleString()} cal`}
+          </ThemedText>
+          <TouchableOpacity onPress={handleUndo} style={styles.toastButton}>
+            <ThemedText style={styles.toastButtonText}>UNDO</ThemedText>
+          </TouchableOpacity>
         </Animated.View>
       )}
     </ThemedView>
@@ -447,267 +337,256 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+    paddingHorizontal: 12,
   },
   backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     alignSelf: 'flex-start',
-    marginBottom: 16,
-    padding: 8,
+    paddingVertical: 6,
   },
   backText: {
-    fontSize: 16,
+    fontSize: 17,
     color: Colors.primary,
   },
-  headerContent: {
+  hero: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 14,
+    paddingHorizontal: 20,
+    paddingTop: 6,
+    paddingBottom: 12,
+  },
+  heroIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 14,
+  },
+  iconImage: {
+    backgroundColor: '#FFFFFF',
+  },
+  heroIconFallback: {
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroText: {
+    flex: 1,
   },
   restaurantTitle: {
-    marginBottom: 8,
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: '800',
     color: Colors.primary,
-    textAlign: 'center',
   },
-  restaurantHours: {
-    fontSize: 16,
-    opacity: 0.7,
-    marginBottom: 4,
-    textAlign: 'center',
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
-  restaurantStats: {
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statusText: {
     fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '600',
+  },
+  hoursText: {
+    fontSize: 14,
+    lineHeight: 20,
     opacity: 0.6,
-    textAlign: 'center',
+    flexShrink: 1,
+  },
+  coverageText: {
+    fontSize: 13,
+    lineHeight: 18,
+    opacity: 0.6,
+    marginTop: 2,
   },
   searchContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 8,
-  },
-  searchInputContainer: {
-    position: 'relative',
-    height: 36,
+    marginHorizontal: 16,
+    height: 38,
+    justifyContent: 'center',
   },
   searchIconContainer: {
     position: 'absolute',
     left: 10,
-    top: 0,
-    height: 36,
-    justifyContent: 'center',
-    alignItems: 'center',
     zIndex: 1,
   },
   searchInput: {
-    height: 36,
+    height: 38,
     borderRadius: 10,
     paddingLeft: 34,
     paddingRight: 34,
-    paddingVertical: 0,
     fontSize: 16,
-    fontWeight: '400',
-    flex: 1,
-    textAlignVertical: 'center',
-    includeFontPadding: false,
   },
   clearButton: {
     position: 'absolute',
     right: 10,
-    top: 0,
-    height: 36,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 1,
   },
-  scrollView: {
-    flex: 1,
+  chips: {
+    flexGrow: 0,
+    flexShrink: 0,
+    marginTop: 10,
   },
-  categoriesContainer: {
-    padding: 16,
-  },
-  noResultsContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 40,
-    paddingHorizontal: 20,
-  },
-  noResultsText: {
-    fontSize: 18,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: 8,
-    opacity: 0.8,
-  },
-  noResultsSubtext: {
-    fontSize: 14,
-    textAlign: 'center',
-    opacity: 0.6,
-    lineHeight: 20,
-  },
-  categoryCard: {
-    marginBottom: 12,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    overflow: 'hidden',
-  },
-  categoryHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-  },
-  categoryInfo: {
-    flex: 1,
-  },
-  categoryName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: Colors.primary,
-    marginBottom: 4,
-  },
-  categoryCount: {
-    fontSize: 14,
-    opacity: 0.7,
-  },
-  expandButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(0, 104, 56, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  expandIcon: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: Colors.primary,
-  },
-  categoryContent: {
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
-    paddingTop: 8,
-  },
-  menuItemContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 16,
-    marginBottom: 8,
+  chipsContent: {
+    paddingHorizontal: 16,
     gap: 8,
+    paddingBottom: 8,
   },
-  menuItem: {
+  chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-    flex: 1,
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
   },
-  menuItemContent: {
-    flex: 1,
+  chipActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
   },
-  menuItemTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-    flexWrap: 'wrap',
-  },
-  menuItemName: {
-    fontSize: 16,
+  chipText: {
+    fontSize: 13,
+    lineHeight: 18,
     fontWeight: '600',
-    marginRight: 8,
   },
-  menuItemDetails: {
+  chipTextActive: {
+    color: '#fff',
+  },
+  sectionHeader: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 6,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Colors.primary,
+  },
+  itemRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     gap: 12,
   },
-  menuItemCalories: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: Colors.primary,
+  itemMain: {
+    flex: 1,
   },
-  menuItemServing: {
-    fontSize: 12,
+  itemTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  itemName: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  itemDescription: {
+    fontSize: 13,
+    lineHeight: 18,
+    opacity: 0.6,
+    marginTop: 2,
+  },
+  itemMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 6,
+  },
+  price: {
+    fontSize: 13,
     opacity: 0.7,
+  },
+  customizable: {
+    fontSize: 12,
+    opacity: 0.5,
   },
   halalBadge: {
     backgroundColor: Colors.primary,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    flexShrink: 0,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 5,
   },
   halalText: {
     fontSize: 11,
+    lineHeight: 15,
     color: 'white',
-    fontWeight: 'bold',
-  },
-  menuItemArrow: {
-    marginLeft: 8,
-    marginTop: -8,
-  },
-  arrowText: {
-    fontSize: 20,
-    opacity: 0.5,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: 16,
-    opacity: 0.7,
-  },
-  errorText: {
-    fontSize: 16,
-    color: Colors.primary,
-    textAlign: 'center',
+    fontWeight: '700',
   },
   addButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  addButtonLoading: {
+  addButtonBusy: {
     opacity: 0.5,
   },
-  undoContainer: {
-    position: 'absolute',
-    bottom: 100,
-    left: 20,
-    right: 20,
-    zIndex: 1000,
+  centered: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    paddingHorizontal: 24,
   },
-  undoContent: {
+  emptyTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    opacity: 0.8,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    opacity: 0.6,
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  footerNote: {
+    fontSize: 12,
+    lineHeight: 17,
+    opacity: 0.5,
+    textAlign: 'center',
+    paddingHorizontal: 32,
+    paddingTop: 20,
+  },
+  toast: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     backgroundColor: '#323232',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 12,
+    paddingLeft: 16,
+    paddingVertical: 6,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
+    shadowRadius: 6,
+    elevation: 6,
   },
-  undoText: {
+  toastText: {
+    flex: 1,
     color: '#FFFFFF',
     fontSize: 14,
-    flex: 1,
   },
-  undoButton: {
+  toastButton: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
   },
-  undoButtonText: {
-    color: Colors.primary,
+  toastButtonText: {
+    color: '#4ADE80',
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: '800',
   },
 });

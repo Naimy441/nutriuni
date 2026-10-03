@@ -1,7 +1,7 @@
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { HistoryDay, useAllFoodHistory } from '@/services/FoodHistoryService';
-import { TrackedItem } from '@/services/NutritionTracker';
+import { formatTrackedCalories, TrackedItem } from '@/services/NutritionTracker';
 import { Ionicons } from '@expo/vector-icons';
 import { BottomSheetModal, BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -92,7 +92,7 @@ export function AllFoodHistoryModal({ visible, onClose }: AllFoodHistoryModalPro
         <View style={styles.foodItemInfo}>
           <ThemedText style={styles.foodItemName}>{item.name}</ThemedText>
           <ThemedText style={styles.foodItemDetails}>
-            {item.restaurant} • {item.calories} cal • {time}
+            {item.restaurant} • {formatTrackedCalories(item)} • {time}
           </ThemedText>
         </View>
         <Ionicons name="chevron-forward" size={16} color={Colors.primary} />

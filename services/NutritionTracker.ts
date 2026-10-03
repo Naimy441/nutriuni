@@ -1,9 +1,12 @@
-// Nutrition Tracking Service - Track daily intake
+// Food log store. Each day is saved under `nutrition_log_YYYY-MM-DD` (the
+// format earlier versions used, so existing history keeps working). Screens
+// subscribe through hooks and update the moment anything is logged anywhere.
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { useState } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import { AppState } from 'react-native';
+import { dateFromKey, dayKey } from './dates';
 import { fastAccessService } from './FastAccessService';
-import { MenuItem } from './MenuDatabase';
+import { isMealType, mealForTime, MealType } from './meals';
 
 export interface DailyNutrition {
   calories: number;
@@ -15,34 +18,77 @@ export interface DailyNutrition {
   sodium: number;
 }
 
-export interface TrackedItem {
+// How much to trust a logged item's numbers. Items logged before this field
+// existed came from NetNutrition labels directly.
+export type TrackedNutritionStatus =
+  | 'complete' // every part has a NetNutrition label
+  | 'estimated' // built from components, or with options the labels can't reflect
+  | 'partial' // some chosen options had no label and are not counted
+  | 'manual' // entered by the user
+  | 'none'; // logged without nutrition
+
+export interface TrackedItem extends DailyNutrition {
   id: string;
   name: string;
   restaurant: string;
-  calories: number;
-  protein: number;
-  carbs: number;
-  fat: number;
-  fiber: number;
-  sugar: number;
-  sodium: number;
   serving_size: string;
   timestamp: number;
+  details?: string; // chosen options, e.g. "Fries, Ranch"
+  nutrition_status?: TrackedNutritionStatus;
+  meal?: MealType;
 }
 
+export type NewTrackedItem = Omit<TrackedItem, 'id' | 'timestamp' | 'meal'>;
+
 export interface DailyLog {
-  date: string; // YYYY-MM-DD format
+  date: string; // YYYY-MM-DD, local time
   items: TrackedItem[];
   totals: DailyNutrition;
 }
 
+const KEY_PREFIX = 'nutrition_log_';
+const NUTRIENT_KEYS: (keyof DailyNutrition)[] = ['calories', 'protein', 'carbs', 'fat', 'fiber', 'sugar', 'sodium'];
+
+export function emptyTotals(): DailyNutrition {
+  return { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0 };
+}
+
+export function emptyLog(date: string): DailyLog {
+  return { date, items: [], totals: emptyTotals() };
+}
+
+export function totalsOf(items: TrackedItem[]): DailyNutrition {
+  const totals = emptyTotals();
+  for (const item of items) {
+    for (const key of NUTRIENT_KEYS) totals[key] += Number(item[key]) || 0;
+  }
+  for (const key of NUTRIENT_KEYS) totals[key] = Math.round(totals[key] * 10) / 10;
+  return totals;
+}
+
+export function mealOf(item: TrackedItem): MealType {
+  return isMealType(item.meal) ? item.meal : mealForTime(new Date(item.timestamp));
+}
+
+// "640 cal", "~870 cal" for estimates, or "No nutrition" for items logged without it.
+export function formatTrackedCalories(item: Pick<TrackedItem, 'calories' | 'nutrition_status'>): string {
+  if (item.nutrition_status === 'none') return 'No nutrition';
+  const approximate = item.nutrition_status === 'estimated' || item.nutrition_status === 'partial';
+  return `${approximate ? '~' : ''}${Math.round(item.calories).toLocaleString()} cal`;
+}
+
+function normalize(date: string, raw: Partial<DailyLog> | null): DailyLog {
+  const items = (raw?.items ?? []).map(item => ({ ...item, sodium: Number(item.sodium) || 0 }));
+  return { date, items, totals: totalsOf(items) };
+}
+
 class NutritionTrackerService {
   private static instance: NutritionTrackerService;
-  private currentDate: string;
-  private dailyLog: DailyLog | null = null;
-  private midnightTimeout: ReturnType<typeof setTimeout> | null = null;
-  private dateChangeCallbacks: (() => void)[] = [];
-  private appStateSubscription: any = null;
+  private days = new Map<string, DailyLog>();
+  private pending = new Map<string, Promise<DailyLog>>();
+  private loggedDays: string[] | null = null;
+  private listeners = new Set<() => void>();
+  private revision = 0;
 
   static getInstance(): NutritionTrackerService {
     if (!NutritionTrackerService.instance) {
@@ -51,649 +97,184 @@ class NutritionTrackerService {
     return NutritionTrackerService.instance;
   }
 
-  constructor() {
-    this.currentDate = this.getTodayString();
-    const now = new Date();
-    this.setupSmartDateDetection();
-  }
-
-  // Smart date detection: precise midnight timer + app state monitoring
-  private setupSmartDateDetection() {
-    this.setupMidnightTimer();
-    this.setupAppStateMonitoring();
-  }
-
-  // Calculate exact time until midnight and set precise timer
-  private setupMidnightTimer() {
-    // Clear existing timeout
-    if (this.midnightTimeout) {
-      clearTimeout(this.midnightTimeout);
-    }
-
-    const now = new Date();
-    const midnight = new Date(now);
-    midnight.setHours(24, 0, 0, 0); // Next midnight
-    
-    const msUntilMidnight = midnight.getTime() - now.getTime();
-    
-    this.midnightTimeout = setTimeout(async () => {
-      await this.checkForDateChange();
-      // Setup timer for next day
-      this.setupMidnightTimer();
-    }, msUntilMidnight);
-  }
-
-  // Setup app state monitoring to check date when app becomes active
-  private setupAppStateMonitoring() {
-    this.appStateSubscription = AppState.addEventListener('change', async (nextAppState: AppStateStatus) => {
-      if (nextAppState === 'background') {
-        // Save timestamp when app goes to background
-        await this.saveBackgroundTimestamp();
-      } else if (nextAppState === 'active') {
-        await this.checkForDateChangeFromBackground();
-      }
-    });
-  }
-
-  // Save timestamp when app goes to background
-  private async saveBackgroundTimestamp(): Promise<void> {
-    try {
-      const timestamp = Date.now();
-      await AsyncStorage.setItem('app_background_timestamp', timestamp.toString());
-    } catch (error) {
-      console.error('Error saving background timestamp:', error);
-    }
-  }
-
-  // Check for date change when returning from background
-  private async checkForDateChangeFromBackground(): Promise<void> {
-    try {
-      const backgroundTimestamp = await AsyncStorage.getItem('app_background_timestamp');
-      
-      if (backgroundTimestamp) {
-        const backgroundTime = new Date(parseInt(backgroundTimestamp));
-        const currentTime = new Date();
-        
-        // Check if we crossed midnight while backgrounded
-        const backgroundDate = backgroundTime.toISOString().split('T')[0];
-        const currentDate = currentTime.toISOString().split('T')[0];
-        
-        if (backgroundDate !== currentDate) {
-          // Force date change processing
-          await this.checkForDateChange();
-          
-          // Reset the midnight timer since we may have missed it
-          this.setupMidnightTimer();
-        } else {
-          // Still check in case this.currentDate is out of sync
-          const actualDateChange = await this.checkForDateChange();
-        }
-        
-        // Clean up the background timestamp
-        await AsyncStorage.removeItem('app_background_timestamp');
-      } else {
-        // No background timestamp, just do regular check
-        await this.checkForDateChange();
-      }
-    } catch (error) {
-      console.error('Error checking date change from background:', error);
-      // Fallback to regular date check
-      await this.checkForDateChange();
-    }
-  }
-
-  // Check if the date has changed and notify listeners
-  private async checkForDateChange(): Promise<boolean> {
-    const newDate = this.getTodayString();
-    const now = new Date();
-    if (this.currentDate !== newDate) {
-      // Check if this is a backwards time change (clock set back)
-      const currentDateObj = new Date(this.currentDate + 'T00:00:00');
-      const newDateObj = new Date(newDate + 'T00:00:00');
-      
-      if (newDateObj < currentDateObj) {
-        // Just sync the date without moving items to history
-        this.currentDate = newDate;
-        return false; // No actual date change processed
-      }
-      
-      const oldDate = this.currentDate;
-      
-      // Save current day's data to history before switching to new day
-      await this.saveCurrentDayToHistory(oldDate);
-      
-      // Switch to new day
-      this.currentDate = newDate;
-      this.dailyLog = null; // Reset daily log for new day
-      
-      // Notify all registered callbacks
-      this.dateChangeCallbacks.forEach(callback => {
-        try {
-          callback();
-        } catch (error) {
-          console.error('Error in date change callback:', error);
-        }
-      });
-      
-      return true; // Date changed
-    }
-    return false; // No change
-  }
-
-  // Save current day's data to history before switching to new day
-  private async saveCurrentDayToHistory(dateString: string): Promise<void> {
-    try {
-      // If we have current daily log data, save it
-      if (this.dailyLog && this.dailyLog.items.length > 0) {
-
-        // Ensure the log has the correct date
-        const finalLog = {
-          ...this.dailyLog,
-          date: dateString,
-        };
-        
-        // Save to AsyncStorage
-        await AsyncStorage.setItem(`nutrition_log_${dateString}`, JSON.stringify(finalLog));
-      } else {
-      }
-    } catch (error) {
-      console.error(`❌ Error saving day ${dateString} to history:`, error);
-    }
-  }
-
-  // Public method to force check for date change (useful for app focus events)
-  public async forceCheckDateChange(): Promise<boolean> {
-    return await this.checkForDateChange();
-  }
-
-
-  // Register a callback to be called when date changes
-  public onDateChange(callback: () => void) {
-    this.dateChangeCallbacks.push(callback);
-    
-    // Return unsubscribe function
+  subscribe = (listener: () => void) => {
+    this.listeners.add(listener);
     return () => {
-      const index = this.dateChangeCallbacks.indexOf(callback);
-      if (index > -1) {
-        this.dateChangeCallbacks.splice(index, 1);
-      }
+      this.listeners.delete(listener);
     };
+  };
+
+  getRevision = () => this.revision;
+
+  private emit() {
+    this.revision++;
+    this.listeners.forEach(listener => listener());
   }
 
-  // Clean up timers when service is destroyed
-  public destroy() {
-    if (this.midnightTimeout) {
-      clearTimeout(this.midnightTimeout);
-      this.midnightTimeout = null;
+  // Cached copy, or undefined until loadDay() has finished for that date.
+  peekDay(date: string): DailyLog | undefined {
+    return this.days.get(date);
+  }
+
+  peekLoggedDays(): string[] | null {
+    return this.loggedDays;
+  }
+
+  loadDay(date: string): Promise<DailyLog> {
+    const cached = this.days.get(date);
+    if (cached) return Promise.resolve(cached);
+    let pending = this.pending.get(date);
+    if (!pending) {
+      pending = AsyncStorage.getItem(KEY_PREFIX + date)
+        .then(text => normalize(date, text ? JSON.parse(text) : null))
+        .catch(() => emptyLog(date))
+        .then(log => {
+          this.days.set(date, log);
+          this.pending.delete(date);
+          this.emit();
+          return log;
+        });
+      this.pending.set(date, pending);
     }
-    // Clean up AppState listener
-    if (this.appStateSubscription) {
-      this.appStateSubscription.remove();
-      this.appStateSubscription = null;
+    return pending;
+  }
+
+  private async save(log: DailyLog) {
+    const next = { ...log, totals: totalsOf(log.items) };
+    this.days.set(log.date, next);
+    if (this.loggedDays) {
+      const others = this.loggedDays.filter(day => day !== log.date);
+      this.loggedDays = next.items.length ? [...others, log.date].sort() : others;
     }
-    this.dateChangeCallbacks = [];
-  }
-
-  private getTodayString(): string {
-    const today = new Date();
-    // Use local date instead of UTC to avoid timezone issues
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  }
-
-  private generateItemId(): string {
-    return `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  }
-
-  private extractNutritionFromMenuItem(menuItem: MenuItem, restaurant: string): TrackedItem {
-    const nutrition = menuItem.nutrition;
-    
-    // Parse calories (might be string)
-    const calories = typeof nutrition.calories === 'string' 
-      ? parseInt(nutrition.calories) || 0 
-      : nutrition.calories || 0;
-
-    // Extract nutrition facts with safe parsing
-    const getNutrientAmount = (key: string): number => {
-      const nutrient = nutrition.nutrition_facts[key];
-      return nutrient ? nutrient.amount || 0 : 0;
-    };
-
-    return {
-      id: this.generateItemId(),
-      name: menuItem.name,
-      restaurant,
-      calories,
-      protein: getNutrientAmount('Protein'),
-      carbs: getNutrientAmount('Total Carbohydrate'),
-      fat: getNutrientAmount('Total Fat'),
-      fiber: getNutrientAmount('Dietary Fiber'),
-      sugar: getNutrientAmount('Total Sugars'),
-      sodium: getNutrientAmount('Sodium'),
-      serving_size: nutrition.serving_info.serving_size,
-      timestamp: Date.now(),
-    };
-  }
-
-  private calculateTotals(items: TrackedItem[]): DailyNutrition {
-    return items.reduce((totals, item) => ({
-      calories: totals.calories + item.calories,
-      protein: totals.protein + item.protein,
-      carbs: totals.carbs + item.carbs,
-      fat: totals.fat + item.fat,
-      fiber: totals.fiber + item.fiber,
-      sugar: totals.sugar + item.sugar,
-      sodium: totals.sodium + item.sodium,
-    }), {
-      calories: 0,
-      protein: 0,
-      carbs: 0,
-      fat: 0,
-      fiber: 0,
-      sugar: 0,
-      sodium: 0,
-    });
-  }
-
-  async loadTodaysLog(): Promise<DailyLog> {
-    const today = this.getTodayString();
-    
-    // If date changed, reset
-    if (this.currentDate !== today) {
-      this.currentDate = today;
-      this.dailyLog = null;
-    }
-
-    // Return cached if available
-    if (this.dailyLog && this.dailyLog.date === today) {
-      return this.dailyLog;
-    }
-
-    try {
-      const stored = await AsyncStorage.getItem(`nutrition_log_${today}`);
-      if (stored) {
-        this.dailyLog = JSON.parse(stored);
-        return this.dailyLog!;
-      }
-    } catch (error) {
-      console.error('Error loading daily log:', error);
-    }
-
-    // Create new log for today
-    this.dailyLog = {
-      date: today,
-      items: [],
-      totals: {
-        calories: 0,
-        protein: 0,
-        carbs: 0,
-        fat: 0,
-        fiber: 0,
-        sugar: 0,
-        sodium: 0,
-      },
-    };
-
-    return this.dailyLog;
-  }
-
-  async addMenuItem(menuItem: MenuItem, restaurant: string): Promise<void> {
-    const todaysLog = await this.loadTodaysLog();
-    const trackedItem = this.extractNutritionFromMenuItem(menuItem, restaurant);
-    
-    todaysLog.items.push(trackedItem);
-    todaysLog.totals = this.calculateTotals(todaysLog.items);
-    
-    // Save to storage
-    try {
-      await AsyncStorage.setItem(
-        `nutrition_log_${this.currentDate}`,
-        JSON.stringify(todaysLog)
-      );
-      this.dailyLog = todaysLog;
-      
-      // Add to fast access for quick re-adding
-      await fastAccessService.addOrUpdateFastAccessItem(trackedItem);
-    } catch (error) {
-      console.error('Error saving daily log:', error);
-      throw error;
-    }
-  }
-
-  async addCustomMeal(customMeal: {
-    name: string;
-    calories: number;
-    protein: number;
-    carbs: number;
-    fat: number;
-    fiber: number;
-    sugar: number;
-    sodium: number;
-    serving_size: string;
-  }): Promise<void> {
-    const todaysLog = await this.loadTodaysLog();
-    
-    const trackedItem: TrackedItem = {
-      id: this.generateItemId(),
-      name: customMeal.name,
-      restaurant: 'Custom Meal',
-      calories: customMeal.calories,
-      protein: customMeal.protein,
-      carbs: customMeal.carbs,
-      fat: customMeal.fat,
-      fiber: customMeal.fiber,
-      sugar: customMeal.sugar,
-      sodium: customMeal.sodium,
-      serving_size: customMeal.serving_size,
-      timestamp: Date.now(),
-    };
-    
-    todaysLog.items.push(trackedItem);
-    todaysLog.totals = this.calculateTotals(todaysLog.items);
-    
-    // Save to storage
-    try {
-      await AsyncStorage.setItem(
-        `nutrition_log_${this.currentDate}`,
-        JSON.stringify(todaysLog)
-      );
-      this.dailyLog = todaysLog;
-      
-      // Add to fast access for quick re-adding
-      await fastAccessService.addOrUpdateFastAccessItem(trackedItem);
-    } catch (error) {
-      console.error('Error saving daily log:', error);
-      throw error;
-    }
-  }
-
-  async removeItem(itemId: string): Promise<void> {
-    const todaysLog = await this.loadTodaysLog();
-    todaysLog.items = todaysLog.items.filter(item => item.id !== itemId);
-    todaysLog.totals = this.calculateTotals(todaysLog.items);
-    
-    try {
-      await AsyncStorage.setItem(
-        `nutrition_log_${this.currentDate}`,
-        JSON.stringify(todaysLog)
-      );
-      this.dailyLog = todaysLog;
-    } catch (error) {
-      console.error('Error saving daily log:', error);
-      throw error;
-    }
-  }
-
-  async getTodaysNutrition(): Promise<DailyNutrition> {
-    const todaysLog = await this.loadTodaysLog();
-    return todaysLog.totals;
-  }
-
-  async getTodaysItems(): Promise<TrackedItem[]> {
-    const todaysLog = await this.loadTodaysLog();
-    return todaysLog.items;
-  }
-
-  async clearTodaysLog(): Promise<void> {
-    const today = this.getTodayString();
-    try {
-      await AsyncStorage.removeItem(`nutrition_log_${today}`);
-      this.dailyLog = {
-        date: today,
-        items: [],
-        totals: {
-          calories: 0,
-          protein: 0,
-          carbs: 0,
-          fat: 0,
-          fiber: 0,
-          sugar: 0,
-          sodium: 0,
-        },
-      };
-    } catch (error) {
-      console.error('Error clearing daily log:', error);
-      throw error;
-    }
-  }
-
-  // Get historical data for a specific date
-  async getDayLog(dateString: string): Promise<DailyLog | null> {
-    try {
-      const stored = await AsyncStorage.getItem(`nutrition_log_${dateString}`);
-      if (stored) {
-        return JSON.parse(stored);
-      }
-      return null;
-    } catch (error) {
-      console.error('Error loading day log:', error);
-      return null;
-    }
-  }
-
-  // Get logs for the past N days (not including today)
-  async getPastDaysLogs(days: number): Promise<DailyLog[]> {
-    const logs: DailyLog[] = [];
-    const today = new Date();
-    
-    for (let i = 1; i <= days; i++) {
-      const pastDate = new Date(today);
-      pastDate.setDate(today.getDate() - i);
-      const dateString = this.formatDateFromDate(pastDate);
-      
-      const log = await this.getDayLog(dateString);
-      if (log) {
-        logs.push(log);
-      }
-    }
-    
-    return logs;
-  }
-
-  // Get the most recent N logs with actual data (regardless of date gaps)
-  async getMostRecentLogs(count: number): Promise<DailyLog[]> {
-    try {
-      const keys = await AsyncStorage.getAllKeys();
-      const nutritionLogKeys = keys.filter(key => key.startsWith('nutrition_log_'));
-      const today = this.getTodayString();
-      
-      // Exclude today's log from history
-      const historicalKeys = nutritionLogKeys.filter(key => key !== `nutrition_log_${today}`);
-      
-      const logs: DailyLog[] = [];
-      for (const key of historicalKeys) {
-        try {
-          const stored = await AsyncStorage.getItem(key);
-          if (stored) {
-            const log = JSON.parse(stored);
-            // Only include logs that have actual food items
-            if (log.items && log.items.length > 0) {
-              logs.push(log);
-            }
-          }
-        } catch (error) {
-          console.error(`Error loading log for key ${key}:`, error);
-        }
-      }
-      
-      // Sort by date (most recent first) and take only the requested count
-      logs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      
-      return logs.slice(0, count);
-    } catch (error) {
-      console.error('Error loading most recent logs:', error);
-      return [];
-    }
-  }
-
-  // Helper method to format date from Date object using local time
-  private formatDateFromDate(date: Date): string {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  }
-
-  // Get all available historical logs
-  async getAllHistoricalLogs(): Promise<DailyLog[]> {
-    try {
-      const keys = await AsyncStorage.getAllKeys();
-      const nutritionLogKeys = keys.filter(key => key.startsWith('nutrition_log_'));
-      const today = this.getTodayString();
-      
-      // Exclude today's log from history
-      const historicalKeys = nutritionLogKeys.filter(key => key !== `nutrition_log_${today}`);
-      
-      const logs: DailyLog[] = [];
-      for (const key of historicalKeys) {
-        try {
-          const stored = await AsyncStorage.getItem(key);
-          if (stored) {
-            const log = JSON.parse(stored);
-            logs.push(log);
-          }
-        } catch (error) {
-          console.error(`Error loading log for key ${key}:`, error);
-        }
-      }
-      
-      // Sort by date (most recent first)
-      logs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      
-      return logs;
-    } catch (error) {
-      console.error('Error loading historical logs:', error);
-      return [];
-    }
-  }
-
-  // Format date for display
-  formatDateForDisplay(dateString: string): string {
-    const date = new Date(dateString);
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-    
-    if (dateString === today.toISOString().split('T')[0]) {
-      return 'Today';
-    } else if (dateString === yesterday.toISOString().split('T')[0]) {
-      return 'Yesterday';
+    this.emit();
+    if (next.items.length) {
+      await AsyncStorage.setItem(KEY_PREFIX + log.date, JSON.stringify(next));
     } else {
-      return date.toLocaleDateString('en-US', {
-        weekday: 'long',
-        month: 'short',
-        day: 'numeric',
-      });
+      await AsyncStorage.removeItem(KEY_PREFIX + log.date);
     }
+  }
+
+  async addTrackedItem(entry: NewTrackedItem, options: { date?: string; meal?: MealType } = {}): Promise<TrackedItem> {
+    const now = new Date();
+    const date = options.date ?? dayKey(now);
+    // Logging to another day keeps today's clock time on that date.
+    const at = dateFromKey(date);
+    at.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
+    const item: TrackedItem = {
+      ...entry,
+      sodium: entry.sodium ?? 0,
+      id: `${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
+      timestamp: at.getTime(),
+      meal: options.meal ?? mealForTime(now),
+    };
+    const log = await this.loadDay(date);
+    await this.save({ ...log, items: [...log.items, item] });
+    await fastAccessService.addOrUpdateFastAccessItem(item);
+    return item;
+  }
+
+  async removeItem(itemId: string, date: string = dayKey()): Promise<TrackedItem | undefined> {
+    const log = await this.loadDay(date);
+    const removed = log.items.find(item => item.id === itemId);
+    if (removed) await this.save({ ...log, items: log.items.filter(item => item.id !== itemId) });
+    return removed;
+  }
+
+  // Puts an item back exactly as it was (undo).
+  async restoreItem(item: TrackedItem, date: string): Promise<void> {
+    const log = await this.loadDay(date);
+    if (log.items.some(existing => existing.id === item.id)) return;
+    const items = [...log.items, item].sort((a, b) => a.timestamp - b.timestamp);
+    await this.save({ ...log, items });
+  }
+
+  async updateItem(itemId: string, date: string, patch: Partial<Omit<TrackedItem, 'id'>>): Promise<void> {
+    const log = await this.loadDay(date);
+    await this.save({ ...log, items: log.items.map(item => (item.id === itemId ? { ...item, ...patch } : item)) });
+  }
+
+  async clearDay(date: string): Promise<void> {
+    await this.save(emptyLog(date));
+  }
+
+  // Every day with at least one logged item, oldest first.
+  async listLoggedDays(): Promise<string[]> {
+    if (this.loggedDays) return this.loggedDays;
+    const keys = await AsyncStorage.getAllKeys();
+    const days = keys.filter(key => key.startsWith(KEY_PREFIX)).map(key => key.slice(KEY_PREFIX.length)).sort();
+    const entries = await AsyncStorage.multiGet(days.map(day => KEY_PREFIX + day));
+    for (const [key, text] of entries) {
+      const date = key.slice(KEY_PREFIX.length);
+      if (this.days.has(date)) continue;
+      try {
+        this.days.set(date, normalize(date, text ? JSON.parse(text) : null));
+      } catch {
+        this.days.set(date, emptyLog(date));
+      }
+    }
+    this.loggedDays = days.filter(day => (this.days.get(day)?.items.length ?? 0) > 0);
+    this.emit();
+    return this.loggedDays;
   }
 }
 
-// Export singleton instance
 export const nutritionTracker = NutritionTrackerService.getInstance();
 
-// React Hook for using the nutrition tracker
-export function useNutritionTracker() {
-  const [dailyNutrition, setDailyNutrition] = useState<DailyNutrition>({
-    calories: 0,
-    protein: 0,
-    carbs: 0,
-    fat: 0,
-    fiber: 0,
-    sugar: 0,
-    sodium: 0,
-  });
-  const [todaysItems, setTodaysItems] = useState<TrackedItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+// ---- hooks ----
 
-  const loadData = async () => {
-    try {
-      setIsLoading(true);
-      const [nutrition, items] = await Promise.all([
-        nutritionTracker.getTodaysNutrition(),
-        nutritionTracker.getTodaysItems(),
-      ]);
-      setDailyNutrition(nutrition);
-      setTodaysItems(items);
-    } catch (error) {
-      console.error('Error loading nutrition data:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+function useTrackerRevision() {
+  return useSyncExternalStore(nutritionTracker.subscribe, nutritionTracker.getRevision);
+}
 
-  const addItem = async (menuItem: MenuItem, restaurant: string) => {
-    try {
-      await nutritionTracker.addMenuItem(menuItem, restaurant);
-      await loadData(); // Refresh data
-    } catch (error) {
-      console.error('Error adding item:', error);
-      throw error;
-    }
-  };
+export function useDayLog(date: string): { log: DailyLog; isLoading: boolean } {
+  useTrackerRevision();
+  useEffect(() => {
+    nutritionTracker.loadDay(date);
+  }, [date]);
+  const log = nutritionTracker.peekDay(date);
+  return { log: log ?? emptyLog(date), isLoading: !log };
+}
 
-  const addCustomMeal = async (customMeal: {
-    name: string;
-    calories: number;
-    protein: number;
-    carbs: number;
-    fat: number;
-    fiber: number;
-    sugar: number;
-    sodium: number;
-    serving_size: string;
-  }) => {
-    try {
-      await nutritionTracker.addCustomMeal(customMeal);
-      await loadData(); // Refresh data
-    } catch (error) {
-      console.error('Error adding custom meal:', error);
-      throw error;
-    }
-  };
+export function useDayLogs(dates: string[]): DailyLog[] {
+  useTrackerRevision();
+  const signature = dates.join(',');
+  useEffect(() => {
+    signature.split(',').filter(Boolean).forEach(date => nutritionTracker.loadDay(date));
+  }, [signature]);
+  return dates.map(date => nutritionTracker.peekDay(date) ?? emptyLog(date));
+}
 
-  const removeItem = async (itemId: string) => {
-    try {
-      await nutritionTracker.removeItem(itemId);
-      await loadData(); // Refresh data
-    } catch (error) {
-      console.error('Error removing item:', error);
-      throw error;
-    }
-  };
-
-  const clearAll = async () => {
-    try {
-      await nutritionTracker.clearTodaysLog();
-      await loadData(); // Refresh data
-    } catch (error) {
-      console.error('Error clearing log:', error);
-      throw error;
-    }
-  };
-
-  // Load data on mount and listen for date changes
-  React.useEffect(() => {
-    loadData();
-    
-    // Subscribe to date changes
-    const unsubscribe = nutritionTracker.onDateChange(() => {
-      loadData();
-    });
-    
-    // Cleanup subscription on unmount
-    return unsubscribe;
+// Days with logged food, oldest first ([] until loaded).
+export function useLoggedDays(): string[] {
+  useTrackerRevision();
+  useEffect(() => {
+    nutritionTracker.listLoggedDays();
   }, []);
+  return nutritionTracker.peekLoggedDays() ?? [];
+}
 
-  return {
-    dailyNutrition,
-    todaysItems,
-    isLoading,
-    addItem,
-    addCustomMeal,
-    removeItem,
-    clearAll,
-    refresh: loadData,
-  };
+// The current local date; changes at midnight and when the app returns to
+// the foreground on a new day.
+export function useToday(): string {
+  const [today, setToday] = useState(() => dayKey());
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const schedule = () => {
+      const now = new Date();
+      const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 1);
+      timer = setTimeout(() => {
+        setToday(dayKey());
+        schedule();
+      }, nextMidnight.getTime() - now.getTime());
+    };
+    schedule();
+    const subscription = AppState.addEventListener('change', status => {
+      if (status === 'active') setToday(dayKey());
+    });
+    return () => {
+      clearTimeout(timer);
+      subscription.remove();
+    };
+  }, []);
+  return today;
 }

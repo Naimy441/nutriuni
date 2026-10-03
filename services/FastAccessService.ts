@@ -1,6 +1,8 @@
-// Fast Access Service - Manage recently added meals and custom meals for quick access
+// Recently logged foods and the user's own meals, for one-tap re-logging.
+// Stored under `fast_access_items` (same format as earlier versions).
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { TrackedItem } from './NutritionTracker';
+import { useEffect, useSyncExternalStore } from 'react';
+import type { NewTrackedItem, TrackedItem, TrackedNutritionStatus } from './NutritionTracker';
 
 export interface FastAccessItem {
   id: string;
@@ -17,12 +19,24 @@ export interface FastAccessItem {
   type: 'custom' | 'restaurant';
   lastUsed: number;
   useCount: number;
+  details?: string;
+  nutrition_status?: TrackedNutritionStatus;
 }
+
+const STORAGE_KEY = 'fast_access_items';
+const MAX_ITEMS = 30;
+export const CUSTOM_MEAL_RESTAURANT = 'Custom Meal';
+
+const sameFood = (a: Pick<FastAccessItem, 'name' | 'restaurant' | 'details'>, b: typeof a) =>
+  a.name === b.name && a.restaurant === b.restaurant && (a.details ?? '') === (b.details ?? '');
 
 class FastAccessService {
   private static instance: FastAccessService;
-  private fastAccessItems: FastAccessItem[] = [];
-  private maxItems = 10; // Maximum number of items to keep
+  private items: FastAccessItem[] = [];
+  private loaded = false;
+  private loading: Promise<void> | null = null;
+  private listeners = new Set<() => void>();
+  private revision = 0;
 
   static getInstance(): FastAccessService {
     if (!FastAccessService.instance) {
@@ -31,216 +45,122 @@ class FastAccessService {
     return FastAccessService.instance;
   }
 
-  async loadFastAccessItems(): Promise<FastAccessItem[]> {
-    try {
-      const stored = await AsyncStorage.getItem('fast_access_items');
-      if (stored) {
-        this.fastAccessItems = JSON.parse(stored);
-        // Sort by lastUsed descending, then by useCount descending
-        this.fastAccessItems.sort((a, b) => {
-          if (b.lastUsed !== a.lastUsed) {
-            return b.lastUsed - a.lastUsed;
-          }
-          return b.useCount - a.useCount;
+  subscribe = (listener: () => void) => {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  };
+
+  getRevision = () => this.revision;
+
+  private emit() {
+    this.revision++;
+    this.listeners.forEach(listener => listener());
+  }
+
+  load(): Promise<void> {
+    if (this.loaded) return Promise.resolve();
+    if (!this.loading) {
+      this.loading = AsyncStorage.getItem(STORAGE_KEY)
+        .then(text => {
+          const parsed = text ? (JSON.parse(text) as FastAccessItem[]) : [];
+          this.items = parsed.map(item => ({ ...item, sodium: Number(item.sodium) || 0 }));
+        })
+        .catch(() => {
+          this.items = [];
+        })
+        .then(() => {
+          this.loaded = true;
+          this.emit();
         });
-      }
-      return this.fastAccessItems;
-    } catch (error) {
-      console.error('Error loading fast access items:', error);
-      return [];
     }
+    return this.loading;
   }
 
-  async addOrUpdateFastAccessItem(trackedItem: TrackedItem): Promise<void> {
-    try {
-      // Load current items if not loaded
-      if (this.fastAccessItems.length === 0) {
-        await this.loadFastAccessItems();
-      }
+  // Most recently used first.
+  getItems(): FastAccessItem[] {
+    return [...this.items].sort((a, b) => b.lastUsed - a.lastUsed || b.useCount - a.useCount);
+  }
 
-      // Check if item already exists (by name and restaurant)
-      const existingIndex = this.fastAccessItems.findIndex(
-        item => item.name === trackedItem.name && item.restaurant === trackedItem.restaurant
-      );
+  private async persist() {
+    this.emit();
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(this.items));
+  }
 
-      if (existingIndex >= 0) {
-        // Update existing item
-        this.fastAccessItems[existingIndex] = {
-          ...this.fastAccessItems[existingIndex],
-          lastUsed: Date.now(),
-          useCount: this.fastAccessItems[existingIndex].useCount + 1,
-          // Update nutrition info in case it changed
-          calories: trackedItem.calories,
-          protein: trackedItem.protein,
-          carbs: trackedItem.carbs,
-          fat: trackedItem.fat,
-          fiber: trackedItem.fiber,
-          sugar: trackedItem.sugar,
-          sodium: trackedItem.sodium,
-          serving_size: trackedItem.serving_size,
-        };
-      } else {
-        // Add new item
-        const fastAccessItem: FastAccessItem = {
-          id: trackedItem.id,
-          name: trackedItem.name,
-          restaurant: trackedItem.restaurant,
-          calories: trackedItem.calories,
-          protein: trackedItem.protein,
-          carbs: trackedItem.carbs,
-          fat: trackedItem.fat,
-          fiber: trackedItem.fiber,
-          sugar: trackedItem.sugar,
-          sodium: trackedItem.sodium,
-          serving_size: trackedItem.serving_size,
-          type: trackedItem.restaurant === 'Custom Meal' ? 'custom' : 'restaurant',
-          lastUsed: Date.now(),
-          useCount: 1,
-        };
-
-        this.fastAccessItems.unshift(fastAccessItem);
-      }
-
-      // Keep only the most recent/frequently used items
-      if (this.fastAccessItems.length > this.maxItems) {
-        this.fastAccessItems = this.fastAccessItems.slice(0, this.maxItems);
-      }
-
-      // Sort by lastUsed descending, then by useCount descending
-      this.fastAccessItems.sort((a, b) => {
-        if (b.lastUsed !== a.lastUsed) {
-          return b.lastUsed - a.lastUsed;
-        }
-        return b.useCount - a.useCount;
+  async addOrUpdateFastAccessItem(tracked: TrackedItem): Promise<void> {
+    await this.load();
+    const existing = this.items.find(item => sameFood(item, tracked));
+    const fields = {
+      calories: tracked.calories,
+      protein: tracked.protein,
+      carbs: tracked.carbs,
+      fat: tracked.fat,
+      fiber: tracked.fiber,
+      sugar: tracked.sugar,
+      sodium: tracked.sodium ?? 0,
+      serving_size: tracked.serving_size,
+      nutrition_status: tracked.nutrition_status,
+      details: tracked.details,
+    };
+    if (existing) {
+      Object.assign(existing, fields, { lastUsed: Date.now(), useCount: existing.useCount + 1 });
+    } else {
+      this.items.push({
+        ...fields,
+        id: tracked.id,
+        name: tracked.name,
+        restaurant: tracked.restaurant,
+        type: tracked.restaurant === CUSTOM_MEAL_RESTAURANT ? 'custom' : 'restaurant',
+        lastUsed: Date.now(),
+        useCount: 1,
       });
-
-      // Save to storage
-      await AsyncStorage.setItem('fast_access_items', JSON.stringify(this.fastAccessItems));
-    } catch (error) {
-      console.error('Error adding/updating fast access item:', error);
-      throw error;
     }
-  }
-
-  async getFastAccessItems(): Promise<FastAccessItem[]> {
-    if (this.fastAccessItems.length === 0) {
-      await this.loadFastAccessItems();
-    }
-    return this.fastAccessItems;
-  }
-
-  async getCustomMeals(): Promise<FastAccessItem[]> {
-    const items = await this.getFastAccessItems();
-    return items.filter(item => item.type === 'custom');
-  }
-
-  async getRecentRestaurantItems(): Promise<FastAccessItem[]> {
-    const items = await this.getFastAccessItems();
-    return items.filter(item => item.type === 'restaurant');
+    // Keep the newest; the user's own meals are never pushed out by restaurant items.
+    const custom = this.items.filter(item => item.type === 'custom');
+    const restaurant = this.items.filter(item => item.type === 'restaurant')
+      .sort((a, b) => b.lastUsed - a.lastUsed)
+      .slice(0, MAX_ITEMS);
+    this.items = [...custom, ...restaurant];
+    await this.persist();
   }
 
   async removeFastAccessItem(itemId: string): Promise<void> {
-    try {
-      this.fastAccessItems = this.fastAccessItems.filter(item => item.id !== itemId);
-      await AsyncStorage.setItem('fast_access_items', JSON.stringify(this.fastAccessItems));
-    } catch (error) {
-      console.error('Error removing fast access item:', error);
-      throw error;
-    }
+    await this.load();
+    this.items = this.items.filter(item => item.id !== itemId);
+    await this.persist();
   }
 
-  async clearAllFastAccessItems(): Promise<void> {
-    try {
-      this.fastAccessItems = [];
-      await AsyncStorage.removeItem('fast_access_items');
-    } catch (error) {
-      console.error('Error clearing fast access items:', error);
-      throw error;
-    }
-  }
-
-  // Convert FastAccessItem back to TrackedItem format for adding to nutrition tracker
-  fastAccessItemToTrackedItem(fastAccessItem: FastAccessItem): TrackedItem {
+  // The fields needed to log this food again.
+  toNewTrackedItem(item: FastAccessItem): NewTrackedItem {
     return {
-      id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, // Generate new ID
-      name: fastAccessItem.name,
-      restaurant: fastAccessItem.restaurant,
-      calories: fastAccessItem.calories,
-      protein: fastAccessItem.protein,
-      carbs: fastAccessItem.carbs,
-      fat: fastAccessItem.fat,
-      fiber: fastAccessItem.fiber,
-      sugar: fastAccessItem.sugar,
-      sodium: fastAccessItem.sodium,
-      serving_size: fastAccessItem.serving_size,
-      timestamp: Date.now(),
+      name: item.name,
+      restaurant: item.restaurant,
+      calories: item.calories,
+      protein: item.protein,
+      carbs: item.carbs,
+      fat: item.fat,
+      fiber: item.fiber,
+      sugar: item.sugar,
+      sodium: item.sodium ?? 0,
+      serving_size: item.serving_size,
+      details: item.details,
+      nutrition_status: item.nutrition_status ?? (item.type === 'custom' ? 'manual' : 'complete'),
     };
   }
 }
 
-// Export singleton instance
 export const fastAccessService = FastAccessService.getInstance();
 
-// React Hook for using fast access
 export function useFastAccess() {
-  const [fastAccessItems, setFastAccessItems] = React.useState<FastAccessItem[]>([]);
-  const [isLoading, setIsLoading] = React.useState(true);
-
-  const loadItems = async () => {
-    try {
-      setIsLoading(true);
-      const items = await fastAccessService.getFastAccessItems();
-      setFastAccessItems(items);
-    } catch (error) {
-      console.error('Error loading fast access items:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const addItem = async (trackedItem: TrackedItem) => {
-    try {
-      await fastAccessService.addOrUpdateFastAccessItem(trackedItem);
-      await loadItems(); // Refresh data
-    } catch (error) {
-      console.error('Error adding fast access item:', error);
-      throw error;
-    }
-  };
-
-  const removeItem = async (itemId: string) => {
-    try {
-      await fastAccessService.removeFastAccessItem(itemId);
-      await loadItems(); // Refresh data
-    } catch (error) {
-      console.error('Error removing fast access item:', error);
-      throw error;
-    }
-  };
-
-  const clearAll = async () => {
-    try {
-      await fastAccessService.clearAllFastAccessItems();
-      await loadItems(); // Refresh data
-    } catch (error) {
-      console.error('Error clearing fast access items:', error);
-      throw error;
-    }
-  };
-
-  // Load data on mount
-  React.useEffect(() => {
-    loadItems();
+  useSyncExternalStore(fastAccessService.subscribe, fastAccessService.getRevision);
+  useEffect(() => {
+    fastAccessService.load();
   }, []);
-
+  const items = fastAccessService.getItems();
   return {
-    fastAccessItems,
-    isLoading,
-    addItem,
-    removeItem,
-    clearAll,
-    refresh: loadItems,
+    recents: items.filter(item => item.type === 'restaurant'),
+    customMeals: items.filter(item => item.type === 'custom'),
+    all: items,
   };
 }
-
-import React from 'react';

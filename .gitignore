@@ -40,3 +40,8 @@ yarn-error.*
 *.tsbuildinfo
 
 app-example
+.verify/
+
+# Firebase CLI cache and logs
+.firebase/
+firebase-debug.log

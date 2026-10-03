@@ -9,6 +9,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 
 import { OnboardingScreen } from '@/components/OnboardingScreen';
+import { menuDatabase } from '@/services/MenuDatabase';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
 // Debug flag - set to false for production
@@ -51,6 +52,11 @@ export default function RootLayout() {
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
   const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null);
+
+  // Load cached menus and check Firestore for newer ones in the background.
+  useEffect(() => {
+    menuDatabase.start();
+  }, []);
 
   useEffect(() => {
     if (loaded) {
