@@ -2,22 +2,13 @@
   "expo": {
     "name": "nutriuni",
     "slug": "nutriuni",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/nutriuni.png",
     "scheme": "nutriuni",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "description": "Track your nutrition at Duke University dining locations",
-    "keywords": [
-      "nutrition",
-      "duke",
-      "university",
-      "dining",
-      "health",
-      "tracker"
-    ],
-    "privacy": "public",
     "platforms": [
       "ios",
       "android"
@@ -35,7 +26,7 @@
     },
     "android": {
       "package": "com.nutriuni.app",
-      "versionCode": 1,
+      "versionCode": 10100,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/nutriuni.png",
         "backgroundColor": "#006838"
@@ -66,8 +57,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "5355a882-2d82-41fe-baea-4d03383e5a28"
+        "projectId": "fceb7098-e65f-4400-9641-88482b309de0"
       }
-    }
+    },
+    "owner": "abdullahnaim"
   }
 }
