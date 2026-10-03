@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { contentHash, MetaWrite, PublishedMeta, RestaurantWrite, SyncDeps, syncOnce } from '../sync';
 
-const MENU_DIR = process.env.MENU_DIR ?? join(__dirname, '../../../../../duke_halal/outputs/nutriuni');
+const MENU_DIR = process.env.MENU_DIR ?? join(__dirname, '../../../../../duke_halal/nutriuni/menus');
 
 interface FakeDb {
   meta: (MetaWrite & PublishedMeta) | null;

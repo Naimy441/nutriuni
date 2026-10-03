@@ -1,5 +1,5 @@
 // Checks the live Firestore menus the way the app sees them (anonymous client
-// SDK): the published index matches duke_halal's outputs/nutriuni on GitHub,
+// SDK): the published index matches duke_halal's nutriuni/menus on GitHub,
 // every restaurant document matches its version, and the security rules reject
 // listing and writes.
 //
@@ -12,7 +12,7 @@ const source = readFileSync(new URL('../constants/firebaseConfig.ts', import.met
 const config = Object.fromEntries([...source.matchAll(/(\w+): "([^"]*)"/g)].map(m => [m[1], m[2]]));
 const db = getFirestore(initializeApp(config));
 setLogLevel('silent'); // denied requests below are expected
-const GITHUB = 'https://raw.githubusercontent.com/Naimy441/Naimy441.github.io/main/outputs/nutriuni/index.json';
+const GITHUB = 'https://raw.githubusercontent.com/Naimy441/Naimy441.github.io/main/nutriuni/menus/index.json';
 
 let failures = 0;
 const check = (ok, message) => {

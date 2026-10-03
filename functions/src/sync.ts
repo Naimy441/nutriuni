@@ -1,4 +1,4 @@
-// Publishes the menus built by duke_halal (outputs/nutriuni on GitHub) to
+// Publishes the menus built by duke_halal (nutriuni/menus on GitHub) to
 // Firestore. Pure logic with injected I/O so it can be tested locally.
 //
 // Firestore layout (read by the app, see services/MenuDatabase.ts):
@@ -57,7 +57,7 @@ export interface MetaWrite {
 }
 
 export interface SyncDeps {
-  // Fetch a file under outputs/nutriuni ("index.json", "restaurants/x.json", "icons/x.jpg").
+  // Fetch a file under nutriuni/menus ("index.json", "restaurants/x.json", "icons/x.jpg").
   fetchBytes(path: string): Promise<Buffer>;
   readMeta(): Promise<PublishedMeta | null>;
   // Must apply every write atomically.

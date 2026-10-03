@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Copies the merged Mobile Order + NetNutrition menus built by duke_halal
-# (src/build_nutriuni_menus.py -> outputs/nutriuni/) into assets/menu/ and
+# (nutriuni/build_nutriuni_menus.py -> nutriuni/menus/) into assets/menu/ and
 # regenerates assets/menu/registry.ts, because React Native can only bundle
 # files referenced by static require() calls.
 #
@@ -8,11 +8,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-SOURCE="${1:-../../duke_halal}/outputs/nutriuni"
+SOURCE="${1:-../../duke_halal}/nutriuni/menus"
 DEST="assets/menu"
 
 if [[ ! -f "$SOURCE/index.json" ]]; then
-  echo "No menu data at $SOURCE. Run 'python3 src/build_nutriuni_menus.py' in duke_halal first." >&2
+  echo "No menu data at $SOURCE. Run 'python3 nutriuni/build_nutriuni_menus.py' in duke_halal first." >&2
   exit 1
 fi
 

@@ -1,7 +1,7 @@
 // Cloud Functions for Nutriuni.
 //
 // syncMenus copies the menus that duke_halal's GitHub Action builds three
-// times a day (Mobile Order + NetNutrition, outputs/nutriuni) into Firestore.
+// times a day (Mobile Order + NetNutrition, nutriuni/menus) into Firestore.
 // It polls instead of being called by the Action, so no Google credentials
 // ever live in GitHub; publishing is a no-op unless index.json changed.
 import { initializeApp } from 'firebase-admin/app';
@@ -14,8 +14,8 @@ import { syncOnce } from './sync';
 initializeApp();
 
 const MENU_SOURCE_BASE = defineString('MENU_SOURCE_BASE', {
-  default: 'https://raw.githubusercontent.com/Naimy441/Naimy441.github.io/main/outputs/nutriuni',
-  description: 'Base URL of the published outputs/nutriuni directory',
+  default: 'https://raw.githubusercontent.com/Naimy441/Naimy441.github.io/main/nutriuni/menus',
+  description: 'Base URL of the published nutriuni/menus directory',
 });
 
 async function fetchBytes(path: string): Promise<Buffer> {

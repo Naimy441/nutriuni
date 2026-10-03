@@ -1,4 +1,4 @@
-// Shapes of the menu data built by duke_halal's src/build_nutriuni_menus.py
+// Shapes of the menu data built by duke_halal's nutriuni/build_nutriuni_menus.py
 // (Mobile Order menus with NetNutrition labels linked in).
 
 export interface FoodLabel {

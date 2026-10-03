@@ -21,13 +21,13 @@ Validate then Distribute
 
 Menus come from the duke_halal repository, which merges Mobile Order menus
 (dishes and their options) with Duke NetNutrition labels three times a day
-(`src/build_nutriuni_menus.py` there) and commits them to
-`outputs/nutriuni/` on GitHub.
+(`nutriuni/build_nutriuni_menus.py` there) and commits them to
+`nutriuni/menus/` on GitHub.
 
 ### Live updates (Firebase project `nutriuni-8166c`)
 
 ```
-GitHub Action (3x/day) ──commit──▶ outputs/nutriuni/ on GitHub
+GitHub Action (3x/day) ──commit──▶ nutriuni/menus/ on GitHub
                                         │  polled every 15 min
                                         ▼
                     Cloud Function syncMenus (functions/)
@@ -78,7 +78,7 @@ before building a release:
 scripts/sync-menu-data.sh ../../duke_halal
 ```
 
-This copies `outputs/nutriuni/` into `assets/menu/` and regenerates
+This copies `nutriuni/menus/` into `assets/menu/` and regenerates
 `assets/menu/registry.ts`. To check the bundled data against the app's
 nutrition engine (references, plausible totals, hand-worked orders):
 

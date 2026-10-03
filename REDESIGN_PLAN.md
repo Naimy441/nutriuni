@@ -39,7 +39,7 @@ with `serve -s dist`, and drive it with Playwright at 390×844. Revert app.json 
 ## Done so far
 
 ### Backend / data (complete, deployed, verified)
-- duke_halal builds Mobile Order + NetNutrition menus → `outputs/nutriuni/` (3×/day CI).
+- duke_halal builds Mobile Order + NetNutrition menus → `nutriuni/menus/` (3×/day CI).
 - Cloud Function `syncMenus` (functions/) polls GitHub every 15 min → Firestore.
 - App `services/MenuDatabase.ts`: bundled → AsyncStorage cache → Firestore.
 - Checks: `node scripts/check-firestore-menus.mjs`, `npm --prefix functions test`,
