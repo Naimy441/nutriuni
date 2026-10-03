@@ -139,11 +139,20 @@ class NutritionTrackerService {
     return pending;
   }
 
-  // The latest copy of a day. Mutations read through this after awaiting
-  // loadDay() so two quick edits never overwrite each other.
-  private async current(date: string): Promise<DailyLog> {
-    await this.loadDay(date);
-    return this.days.get(date) ?? emptyLog(date);
+  // Edits run one at a time, each on the latest copy of the day, so quick
+  // successive changes (a double tap, undoing several items) never overwrite
+  // each other.
+  private queue: Promise<unknown> = Promise.resolve();
+
+  private edit<T>(date: string, change: (log: DailyLog) => { next?: DailyLog; result: T }): Promise<T> {
+    const run = this.queue.then(async () => {
+      await this.loadDay(date);
+      const { next, result } = change(this.days.get(date) ?? emptyLog(date));
+      if (next) await this.save(next);
+      return result;
+    });
+    this.queue = run.catch(() => {});
+    return run;
   }
 
   private async save(log: DailyLog) {
@@ -178,34 +187,39 @@ class NutritionTrackerService {
       timestamp: at.getTime(),
       meal: options.meal ?? mealForTime(now),
     };
-    const log = await this.current(date);
-    await this.save({ ...log, items: [...log.items, item] });
+    await this.edit(date, log => ({ next: { ...log, items: [...log.items, item] }, result: undefined }));
     if (options.remember !== false) await fastAccessService.addOrUpdateFastAccessItem(item);
     return item;
   }
 
   async removeItem(itemId: string, date: string = dayKey()): Promise<TrackedItem | undefined> {
-    const log = await this.current(date);
-    const removed = log.items.find(item => item.id === itemId);
-    if (removed) await this.save({ ...log, items: log.items.filter(item => item.id !== itemId) });
-    return removed;
+    return this.edit(date, log => {
+      const removed = log.items.find(item => item.id === itemId);
+      return {
+        next: removed ? { ...log, items: log.items.filter(item => item.id !== itemId) } : undefined,
+        result: removed,
+      };
+    });
   }
 
   // Puts an item back exactly as it was (undo).
   async restoreItem(item: TrackedItem, date: string): Promise<void> {
-    const log = await this.current(date);
-    if (log.items.some(existing => existing.id === item.id)) return;
-    const items = [...log.items, item].sort((a, b) => a.timestamp - b.timestamp);
-    await this.save({ ...log, items });
+    await this.edit(date, log => {
+      if (log.items.some(existing => existing.id === item.id)) return { result: undefined };
+      const items = [...log.items, item].sort((a, b) => a.timestamp - b.timestamp);
+      return { next: { ...log, items }, result: undefined };
+    });
   }
 
   async updateItem(itemId: string, date: string, patch: Partial<Omit<TrackedItem, 'id'>>): Promise<void> {
-    const log = await this.current(date);
-    await this.save({ ...log, items: log.items.map(item => (item.id === itemId ? { ...item, ...patch } : item)) });
+    await this.edit(date, log => ({
+      next: { ...log, items: log.items.map(item => (item.id === itemId ? { ...item, ...patch } : item)) },
+      result: undefined,
+    }));
   }
 
   async clearDay(date: string): Promise<void> {
-    await this.save(emptyLog(date));
+    await this.edit(date, () => ({ next: emptyLog(date), result: undefined }));
   }
 
   // Deletes every logged day (Profile → Reset).

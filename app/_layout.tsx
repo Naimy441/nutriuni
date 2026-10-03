@@ -76,6 +76,7 @@ export default function RootLayout() {
                 <Stack.Screen name="day/[date]" options={{ ...headerOptions, title: '' }} />
                 <Stack.Screen name="log" options={{ presentation: 'modal' }} />
                 <Stack.Screen name="goals" options={{ ...headerOptions, title: 'Daily targets' }} />
+                <Stack.Screen name="plan" options={{ ...headerOptions, title: 'Meal plan' }} />
                 <Stack.Screen name="profile-edit" options={{ ...headerOptions, title: 'Your details' }} />
                 <Stack.Screen name="sources" options={{ ...headerOptions, title: 'Sources & methods' }} />
                 <Stack.Screen name="+not-found" options={{ ...headerOptions, title: 'Not found' }} />

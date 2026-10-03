@@ -2,6 +2,7 @@
 // re-log recent foods and saved meals, browse a restaurant, or add calories.
 import { DishRow, RestaurantRow, StatusLine } from '@/components/DiningRows';
 import { MenuItemSheet } from '@/components/MenuItemSheet';
+import { MealPlanCard } from '@/components/PlanCards';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
@@ -13,6 +14,7 @@ import { Segmented } from '@/components/ui/Segmented';
 import { ToastProvider, useToast } from '@/components/ui/Toast';
 import { formatNumber } from '@/constants/nutrients';
 import { radius, space, useTheme } from '@/constants/theme';
+import { menuItemFor, useLogSuggestion, useMealPlan, useSuggestions } from '@/hooks/usePlanner';
 import { useQuickAdd } from '@/hooks/useQuickAdd';
 import { useRestaurants } from '@/hooks/useRestaurants';
 import { relativeDayLabel } from '@/services/dates';
@@ -152,20 +154,23 @@ function LogContent() {
             addingId={addingId}
           />
         ) : tab === 'recent' ? (
-          <SavedList
-            items={recents}
-            onLog={logSaved}
-            onLongPress={forget}
-            empty={
-              <EmptyState
-                icon="time-outline"
-                title="No recent foods yet"
-                message="Everything you log shows up here so you can add it again with one tap."
-                actionLabel="Browse dining"
-                onAction={() => setTab('dining')}
-              />
-            }
-          />
+          <View style={styles.gap}>
+            <PlanPicks date={date} meal={meal} onOpen={openSheet} />
+            <SavedList
+              items={recents}
+              onLog={logSaved}
+              onLongPress={forget}
+              empty={
+                <EmptyState
+                  icon="time-outline"
+                  title="No recent foods yet"
+                  message="Everything you log shows up here so you can add it again with one tap."
+                  actionLabel="Browse dining"
+                  onAction={() => setTab('dining')}
+                />
+              }
+            />
+          </View>
         ) : tab === 'meals' ? (
           <SavedList
             items={customMeals}
@@ -234,6 +239,45 @@ function MealFooter({ date, meal, onDone }: { date: string; meal: MealType; onDo
         </AppText>
       </View>
       <Button title="Done" size="md" onPress={onDone} style={styles.doneButton} />
+    </View>
+  );
+}
+
+// ---- what fits the plan ----
+
+function PlanPicks({ date, meal, onOpen }: {
+  date: string;
+  meal: MealType;
+  onOpen: (menu: RestaurantMenu, item: MenuItem) => void;
+}) {
+  const { meals } = useMealPlan(date);
+  const target = meals.find(m => m.meal === meal);
+  const suggestions = useSuggestions(date, target, 3);
+  const logSuggestion = useLogSuggestion();
+  const [logging, setLogging] = useState<string | null>(null);
+  if (!target || target.state !== 'planned' || !suggestions.length) return null;
+  return (
+    <View style={styles.smallGap}>
+      <AppText variant="footnote" tone="secondary" weight="600" style={styles.label}>
+        FITS YOUR PLAN
+      </AppText>
+      <MealPlanCard
+        target={target}
+        suggestions={suggestions}
+        loggingKey={logging}
+        onLog={async suggestion => {
+          setLogging(suggestion.key);
+          try {
+            await logSuggestion(suggestion, date, meal);
+          } finally {
+            setLogging(null);
+          }
+        }}
+        onOpen={(_, part) => {
+          const found = menuItemFor(part);
+          if (found) onOpen(found.menu, found.item);
+        }}
+      />
     </View>
   );
 }

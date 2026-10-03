@@ -24,7 +24,7 @@ export default function ProfileScreen() {
   const bottomPadding = useTabBarSpace();
   const router = useRouter();
   const toast = useToast();
-  const { goals, profile } = useGoals();
+  const { goals, profile, planner } = useGoals();
   useMenuRevision();
   const [checking, setChecking] = useState(false);
 
@@ -106,6 +106,13 @@ export default function ProfileScreen() {
             onPress={() => router.push('/profile-edit')}
           />
           <ListRow icon="options-outline" title="Daily targets" value={custom ? 'Custom' : 'Recommended'} onPress={() => router.push('/goals')} divider />
+          <ListRow
+            icon="calendar-outline"
+            title="Meal plan"
+            subtitle={planner.balanceWeek ? 'Balancing your week' : 'Weekly balancing off'}
+            onPress={() => router.push('/plan')}
+            divider
+          />
         </ListGroup>
 
         <ListGroup title="Dining data" footer="Menus refresh automatically a few times a day.">

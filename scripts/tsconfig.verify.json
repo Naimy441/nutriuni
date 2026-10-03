@@ -9,5 +9,5 @@
     "rootDir": "..",
     "outDir": "../.verify"
   },
-  "files": ["verify-menu-data.ts"]
+  "files": ["verify-menu-data.ts", "verify-planner.ts"]
 }

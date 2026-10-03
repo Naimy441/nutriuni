@@ -141,3 +141,38 @@ with `serve -s dist`, and drive it with Playwright at 390×844. Revert app.json 
     logging to past days, fresh install onboarding.
 11. Remove the dev-only `· source` tag in `app/(tabs)/menus.tsx` if unwanted;
     produce App Store screenshots of Today, item builder, Dining, Progress.
+
+## Weekly meal planner
+
+Logic in `services/planner.ts` (pure, no React); app glue in `hooks/usePlanner.ts`;
+UI in `components/PlanCards.tsx`, `components/UpNext.tsx` (Today), `app/plan.tsx`
+(Meal plan screen) and "Fits your plan" in the Log screen's Recent tab. Setting:
+"Balance my week" (`goalsStore.planner.balanceWeek`, key `planner_settings`, on by default).
+
+- **Week budget:** 7 × daily goal (calories and protein), weeks start Sunday like the
+  week strip. A day's target = what's left of the week ÷ days left, clamped to
+  ±15% of the daily goal and never below 1,200 cal (1,500 for men). Changes under
+  40 cal are ignored. A day's target depends only on earlier days, so it's fixed
+  before the day starts and doesn't move while you eat; today's overage moves into
+  tomorrow's target.
+- **Missing data:** unlogged days, and logged days under 50% of target (probably
+  half-logged), count as on target, so a forgotten log never becomes extra food.
+- **Protein:** a shortfall raises later days' protein targets (up to 130%), never
+  below the daily goal.
+- **Meals:** the day's remaining calories are split across meals not yet eaten, by
+  the user's learned meal shares (28 days of fully logged days, blended with
+  defaults 25/35/30/10). A meal not logged by the end of its window counts as
+  skipped. Meals keep a minimum (breakfast 250, lunch 350, dinner 400) and a cap
+  (45% of the day); a snack under 150 is dropped and its share goes to the meals.
+- **Suggestions:** only dishes whose default order has a full NetNutrition label
+  (estimates from several labels allowed, partial ones not) plus the user's saved
+  meals and customised recent orders. The restaurant has to be open during the meal
+  window that day, and weekday-only sections ("Monday Combos") only show on that day.
+  Components such as condiments, toppings, dressings and proteins sold alone are
+  excluded, and so is the Marine Lab (Beaufort) unless the user has eaten there.
+  Candidates are single dishes, or a dish plus a side, drink or saved meal. They
+  are ranked by calorie fit (going over counts more than coming under), protein
+  shortfall, how well the food suits the meal, and familiarity, then varied by
+  restaurant.
+- **Checks:** `npx tsc -p scripts/tsconfig.verify.json && node .verify/scripts/verify-planner.js`
+  (196 checks, including suggestions against the bundled menus).

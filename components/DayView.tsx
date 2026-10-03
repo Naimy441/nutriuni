@@ -5,8 +5,9 @@ import { radius, shadow, space, useTheme } from '@/constants/theme';
 import { timeLabel } from '@/services/dates';
 import { fastAccessService, FastAccessItem, sourceLabel, useFastAccess } from '@/services/FastAccessService';
 import { useGoals } from '@/services/goals';
+import { useDayTargets, useWeekPlan } from '@/hooks/usePlanner';
 import { MEALS, MealType, mealForTime, mealLabel } from '@/services/meals';
-import { formatTrackedCalories, mealOf, nutritionTracker, TrackedItem, useDayLog } from '@/services/NutritionTracker';
+import { formatTrackedCalories, mealOf, nutritionTracker, TrackedItem, useDayLog, useLoggedDays } from '@/services/NutritionTracker';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
@@ -14,6 +15,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import Animated, { FadeIn, FadeInDown, FadeOut, LinearTransition } from 'react-native-reanimated';
 import { NutrientSheet } from './NutrientSheet';
+import { WeekCard } from './PlanCards';
 import { TrackedItemSheet, TrackedSelection } from './TrackedItemSheet';
 import { AnimatedNumber } from './ui/AnimatedNumber';
 import { AppText } from './ui/AppText';
@@ -25,6 +27,7 @@ import { ProgressBar } from './ui/ProgressBar';
 import { ProgressRing } from './ui/ProgressRing';
 import { SectionHeader } from './ui/SectionHeader';
 import { useToast } from './ui/Toast';
+import { UpNext } from './UpNext';
 
 interface DayViewProps {
   date: string;
@@ -36,7 +39,12 @@ interface DayViewProps {
 export function DayView({ date, today, header, bottomPadding }: DayViewProps) {
   const router = useRouter();
   const { log } = useDayLog(date);
-  const { goals } = useGoals();
+  const { goals: baseGoals } = useGoals();
+  // Calorie and protein targets for this day after balancing the week.
+  const targets = useDayTargets(date);
+  const goals = { ...baseGoals, calories: targets.target, protein: targets.proteinTarget };
+  const week = useWeekPlan(date);
+  const loggedDays = useLoggedDays();
   const [selected, setSelected] = useState<TrackedSelection | null>(null);
   const [nutrient, setNutrient] = useState<TrackedNutrient | null>(null);
   const isToday = date === today;
@@ -57,9 +65,9 @@ export function DayView({ date, today, header, bottomPadding }: DayViewProps) {
         showsVerticalScrollIndicator={false}
       >
         {header}
-        <SummaryCard totals={log.totals} goals={goals} onSelect={setNutrient} />
+        <SummaryCard totals={log.totals} goals={goals} adjustment={week.balanced ? targets.adjustment : 0} onSelect={setNutrient} />
 
-        {log.items.length === 0 && isToday && (
+        {log.items.length === 0 && isToday && loggedDays.length === 0 && (
           <Animated.View entering={FadeIn.duration(300)}>
             <Card style={styles.welcome}>
               <View style={styles.welcomeText}>
@@ -76,7 +84,8 @@ export function DayView({ date, today, header, bottomPadding }: DayViewProps) {
           </Animated.View>
         )}
 
-        <RecentsRow date={date} />
+        {isToday && <WeekCard plan={week} onPress={() => router.push('/plan')} />}
+        {isToday && <UpNext date={date} />}
 
         <View style={styles.meals}>
           {MEALS.map(meal => (
@@ -90,6 +99,8 @@ export function DayView({ date, today, header, bottomPadding }: DayViewProps) {
             />
           ))}
         </View>
+
+        <RecentsRow date={date} />
 
         <Pressable onPress={() => router.push('/sources')} accessibilityRole="link" style={styles.footer}>
           <AppText variant="caption" tone="tertiary" align="center">
@@ -113,10 +124,11 @@ export function DayView({ date, today, header, bottomPadding }: DayViewProps) {
 // ---- summary ----
 
 function SummaryCard({
-  totals, goals, onSelect,
+  totals, goals, adjustment, onSelect,
 }: {
   totals: Record<TrackedNutrient, number>;
   goals: Record<TrackedNutrient, number>;
+  adjustment: number; // today's target versus the plain daily goal
   onSelect: (key: TrackedNutrient) => void;
 }) {
   const theme = useTheme();
@@ -147,7 +159,13 @@ function SummaryCard({
           </ProgressRing>
         </PressableScale>
         <View style={styles.summaryStats}>
-          <Stat icon="flag-outline" label="Target" value={formatNumber(goals.calories)} color={theme.textSecondary} />
+          <Stat
+            icon="flag-outline"
+            label="Target"
+            value={formatNumber(goals.calories)}
+            note={adjustment ? `${adjustment > 0 ? '+' : '−'}${formatNumber(Math.abs(adjustment))} for your week` : undefined}
+            color={theme.textSecondary}
+          />
           <Stat icon="restaurant-outline" label="Eaten" value={formatNumber(eaten)} color={theme.calories} />
           <Stat
             icon={over ? 'alert-circle-outline' : 'leaf-outline'}
@@ -209,13 +227,20 @@ function SummaryCard({
   );
 }
 
-function Stat({ icon, label, value, color }: { icon: React.ComponentProps<typeof Ionicons>['name']; label: string; value: string; color: string }) {
+function Stat({ icon, label, value, color, note }: {
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  value: string;
+  color: string;
+  note?: string;
+}) {
   return (
     <View style={styles.stat}>
       <Ionicons name={icon} size={18} color={color} />
-      <View>
+      <View style={styles.flex}>
         <AppText variant="caption" tone="secondary">{label}</AppText>
         <AppText variant="headline" numeric>{value}</AppText>
+        {note ? <AppText variant="micro" tone="brand" numberOfLines={1}>{note}</AppText> : null}
       </View>
     </View>
   );
