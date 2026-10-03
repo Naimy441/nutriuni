@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.nutriuni.app",
-      "buildNumber": "1",
+      "buildNumber": "8",
       "infoPlist": {
         "CFBundleDisplayName": "nutriuni",
         "NSCameraUsageDescription": "This app does not use the camera.",
