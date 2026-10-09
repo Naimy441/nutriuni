@@ -1,4 +1,4 @@
-import { ActivityPicker, BodyFields, draftFromProfile, GoalPicker, profileFromDraft, ProfileDraft, SexPicker, validateDraft } from '@/components/ProfileFields';
+import { ActivityPicker, BodyFields, ClassYearPicker, draftFromProfile, GoalPicker, profileFromDraft, ProfileDraft, SexPicker, validateDraft } from '@/components/ProfileFields';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
@@ -46,6 +46,13 @@ export default function ProfileEditScreen() {
         </Section>
         <Section title="Activity" error={errors.activityLevel}>
           <ActivityPicker value={draft.activityLevel} onChange={activityLevel => update({ activityLevel })} />
+        </Section>
+        <Section
+          title="Class year"
+          subtitle="Marketplace and Trinity are first-year dining. They show up in your meal plan only for first-years."
+          error={errors.classYear}
+        >
+          <ClassYearPicker value={draft.classYear} onChange={classYear => update({ classYear })} />
         </Section>
       </ScrollView>
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, space.lg), backgroundColor: theme.background, borderTopColor: theme.separator }]}>

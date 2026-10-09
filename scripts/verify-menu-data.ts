@@ -6,7 +6,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import {
-  computeNutrition, defaultSelection, hasNutritionSource, previewNutrition, Selection, toggleValue, unmetChoices,
+  computeNutrition, defaultSelection, hasNutritionSource, implicitAddFood, prepareLabel, previewNutrition, Selection,
+  setValueQuantity, toggleValue, unmetChoices,
 } from '../services/menuNutrition';
 import type { MenuIndex, MenuItem, RestaurantMenu } from '../services/menuTypes';
 
@@ -143,6 +144,56 @@ function expect(title: string, actual: number | undefined, expected: number, sta
 {
   const { menu, item } = find('marketplace', menus.get('marketplace')!.sections[0].items[0].name);
   expect(`Marketplace "${item.name}" uses its label`, previewNutrition(menu, item).totals?.calories, menu.foods[item.base!].calories);
+}
+{
+  const gothic = ['Build your own Burger', 'Double Patty Melt Burger', 'Gothic Smash Burger', 'The NC Burger', 'Cali Smash Burger'];
+  for (const name of gothic) {
+    const { menu, item } = find('gothic-grill', name);
+    const before = previewNutrition(menu, item).totals?.calories;
+    const sel = choose(item, defaultSelection(item), 'Double Burger');
+    const doubled = computeNutrition(menu, item, sel);
+    expect(`${name}: Double Burger adds a beef patty`, doubled.totals?.calories, (before ?? 0) + 160);
+    const group = item.options!.findIndex(g => g.values.some(v => v.name === 'Double Burger'));
+    const value = item.options![group].values.findIndex(v => v.name === 'Double Burger');
+    const twice = computeNutrition(menu, item, setValueQuantity(item, sel, group, value, 2));
+    expect(`${name}: two Double Burgers add two patties`, twice.totals?.calories, (before ?? 0) + 320);
+  }
+  const krafthouse = ["Mushroom and Swiss Burger", "Devils Krafthouse Burger", "Brecky Burger", "Queso Burger", "Brie and Bacon Jam Burger", "BBQ Bacon Burger", "Build Your Own Burger"];
+  for (const name of krafthouse) {
+    const { menu, item } = find('the-devil-s-krafthouse', name);
+    const before = previewNutrition(menu, item).totals?.calories ?? 0;
+    const sel = choose(item, defaultSelection(item), 'Double Burger');
+    const doubled = computeNutrition(menu, item, sel);
+    expect(`${name}: Double Burger adds the published patty`, doubled.totals?.calories, before + 160);
+    if (!doubled.estimated) fail(`${name}: a borrowed patty label should be an estimate`);
+  }
+  {
+    const { menu, item } = find('pitchfork-s', 'Black Angus Burger');
+    const before = previewNutrition(menu, item).totals?.calories ?? 0;
+    const sel = choose(item, defaultSelection(item), 'Double Cheese');
+    expect('Pitchfork Double Cheese adds a cheddar slice', computeNutrition(menu, item, sel).totals?.calories, before + 80);
+    if (!implicitAddFood(menu, { name: 'Double Cheese', kind: 'add' })) fail('Double Cheese should resolve to cheddar');
+  }
+}
+{
+  const trinity = menus.get('trinity')!;
+  const hotChocolate = Object.values(trinity.foods).find(food => food.name === 'Hot Chocolate Whole Milk' && food.serving_size?.includes('Medium'));
+  if (!hotChocolate) fail('missing Trinity medium hot chocolate');
+  else {
+    const prepared = prepareLabel(hotChocolate);
+    expect('Trinity medium hot chocolate keeps its milk protein', prepared.label?.protein, 16);
+    if (prepared.label?.calories !== 450) fail('Trinity medium hot chocolate calories should stay 450');
+  }
+  const soy = Object.values(menus.get('cafe')!.foods).find(food => food.name === 'Hot Chocolate Soy Milk');
+  if (!soy || prepareLabel(soy).label !== null) fail('Cafe soy hot chocolate (790 kcal / 161 g sugar in a small cup) should be withheld');
+  else console.log('PASS  Cafe soy hot chocolate withheld as implausible');
+  const salsa = Object.values(menus.get('it-s-thyme')!.foods).find(food => food.name === 'Mango Salsa');
+  if (!salsa) fail('missing mango salsa');
+  else {
+    const prepared = prepareLabel(salsa);
+    if (prepared.label?.sugar != null) fail(`mango salsa sugar should be withheld, got ${prepared.label.sugar}`);
+    expect('Mango salsa 132 was sodium, not sugar', prepared.label?.sodium, 132);
+  }
 }
 {
   const { menu, item } = find('mcdonald-s', 'Big Mac');

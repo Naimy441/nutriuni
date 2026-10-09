@@ -113,7 +113,7 @@ export default function ProfileScreen() {
             icon="person-outline"
             title="Your details"
             subtitle={profile
-              ? `${profile.age} yrs · ${profile.heightFeet}′${profile.heightInches}″ · ${profile.weight} lb · ${activity?.label ?? 'Custom activity'}`
+              ? `${profile.age} yrs · ${profile.heightFeet}′${profile.heightInches}″ · ${profile.weight} lb · ${activity?.label ?? 'Custom activity'} · ${profile.classYear === 'freshman' ? 'First-year' : 'Sophomore or above'}`
               : 'Add your details for personal targets'}
             onPress={() => router.push('/profile-edit')}
           />

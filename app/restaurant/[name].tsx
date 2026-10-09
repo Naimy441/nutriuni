@@ -1,3 +1,4 @@
+import { CATEGORY_ALL, CategoryBrowser, CategoryStep } from '@/components/CategoryBrowser';
 import { DishRow, RestaurantIcon, StatusLine } from '@/components/DiningRows';
 import { MenuItemSheet } from '@/components/MenuItemSheet';
 import { AppText } from '@/components/ui/AppText';
@@ -17,7 +18,7 @@ import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'r
 import { ScrollView, SectionList, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const ALL = '__all__';
+const ALL = CATEGORY_ALL;
 
 export default function RestaurantPage() {
   const { name, item: itemParam } = useLocalSearchParams<{ name: string; item?: string }>();
@@ -156,22 +157,19 @@ export default function RestaurantPage() {
           </View>
         </View>
         <SearchField value={query} onChangeText={setQuery} placeholder={`Search ${menu.name}`} />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-          {filtering && missing.length === 0 && (
-            <Chip label={preferencesLabel(food)} icon="leaf-outline" selected={fitsOnly} onPress={() => setFitsOnly(v => !v)} />
-          )}
-          {menu.stats.with_nutrition > 0 && menu.stats.with_nutrition < menu.stats.items && (
-            <Chip label="With nutrition" icon="nutrition-outline" selected={onlyWithNutrition} onPress={() => setOnlyWithNutrition(v => !v)} />
-          )}
-          {[{ name: ALL }, ...menu.sections].map(section => (
-            <Chip
-              key={section.name}
-              label={section.name === ALL ? 'All' : section.name}
-              selected={activeSection === section.name}
-              onPress={() => setActiveSection(activeSection === section.name ? ALL : section.name)}
-            />
-          ))}
-        </ScrollView>
+        {(filtering && missing.length === 0) || (menu.stats.with_nutrition > 0 && menu.stats.with_nutrition < menu.stats.items) ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+            {filtering && missing.length === 0 && (
+              <Chip label={preferencesLabel(food)} icon="leaf-outline" selected={fitsOnly} onPress={() => setFitsOnly(v => !v)} />
+            )}
+            {menu.stats.with_nutrition > 0 && menu.stats.with_nutrition < menu.stats.items && (
+              <Chip label="With nutrition" icon="nutrition-outline" selected={onlyWithNutrition} onPress={() => setOnlyWithNutrition(v => !v)} />
+            )}
+          </ScrollView>
+        ) : null}
+        {menu.sections.length > 1 && (
+          <CategoryBrowser names={menu.sections.map(section => section.name)} value={activeSection} onChange={setActiveSection} />
+        )}
       </View>
 
       <SectionList
@@ -189,11 +187,20 @@ export default function RestaurantPage() {
             : <EmptyState icon="search" title="No dishes match" message="Try another search or clear the filters." compact />
         }
         ListFooterComponent={
-          summary?.source === 'netnutrition' ? (
-            <AppText variant="caption" tone="tertiary" align="center" style={styles.footerNote}>
-              Not every dish here is served every day.
-            </AppText>
-          ) : null
+          <View style={styles.footerBlock}>
+            {menu.sections.length > 1 && (
+              <CategoryStep
+                names={menu.sections.map(section => section.name)}
+                value={activeSection}
+                onChange={setActiveSection}
+              />
+            )}
+            {summary?.source === 'netnutrition' ? (
+              <AppText variant="caption" tone="tertiary" align="center" style={styles.footerNote}>
+                Not every dish here is served every day.
+              </AppText>
+            ) : null}
+          </View>
         }
       />
 
@@ -254,8 +261,11 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: radius.lg,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
+  footerBlock: {
+    gap: space.md,
+    paddingTop: space.xl,
+  },
   footerNote: {
     paddingHorizontal: space.xl,
-    paddingTop: space.xl,
   },
 });

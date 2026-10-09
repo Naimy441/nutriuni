@@ -310,6 +310,62 @@ function RecentsRow({ date }: { date: string }) {
   );
 }
 
+// Each logged row clips its swipe so the delete action stays inside the row.
+// A layout animation on this wrapper used to promote the row on the z axis
+// while it moved, which made neighboring rows jump over each other.
+function LoggedFoodRow({ item, onSelect, onRemove }: {
+  item: TrackedItem;
+  onSelect: (item: TrackedItem) => void;
+  onRemove: (item: TrackedItem) => void;
+}) {
+  const theme = useTheme();
+  const [lifted, setLifted] = useState(false);
+  return (
+    <Animated.View
+      entering={FadeInDown.duration(260)}
+      exiting={FadeOut.duration(160)}
+      style={[styles.swipeClip, { zIndex: lifted ? 1 : 0, backgroundColor: theme.surface }]}
+    >
+      <ReanimatedSwipeable
+        friction={2}
+        rightThreshold={40}
+        overshootRight={false}
+        containerStyle={styles.swipeContainer}
+        childrenContainerStyle={[styles.swipeChild, { backgroundColor: theme.surface }]}
+        onSwipeableOpenStartDrag={() => setLifted(true)}
+        onSwipeableClose={() => setLifted(false)}
+        renderRightActions={() => (
+          <Pressable
+            onPress={() => onRemove(item)}
+            style={[styles.deleteAction, { backgroundColor: theme.danger }]}
+            accessibilityLabel={`Delete ${item.name}`}
+          >
+            <Ionicons name="trash" size={20} color="#FFFFFF" />
+            <AppText variant="caption" weight="700" color="#FFFFFF">Delete</AppText>
+          </Pressable>
+        )}
+      >
+        <Pressable
+          onPress={() => onSelect(item)}
+          style={({ pressed }) => [styles.itemRow, { backgroundColor: pressed ? theme.fill : theme.surface }]}
+          accessibilityRole="button"
+          accessibilityHint="Shows details. Swipe left to delete."
+        >
+          <View style={styles.flex}>
+            <AppText variant="callout" weight="500" numberOfLines={1}>{item.name}</AppText>
+            <AppText variant="footnote" tone="tertiary" numberOfLines={1}>
+              {[timeLabel(item.timestamp), sourceLabel(item.restaurant), item.details].filter(Boolean).join(' · ')}
+            </AppText>
+          </View>
+          <AppText variant="subhead" weight="600" numeric tone={item.nutrition_status === 'none' ? 'tertiary' : 'primary'}>
+            {formatTrackedCalories(item)}
+          </AppText>
+        </Pressable>
+      </ReanimatedSwipeable>
+    </Animated.View>
+  );
+}
+
 // ---- meals ----
 
 function MealSection({
@@ -347,40 +403,7 @@ function MealSection({
         <IconButton icon="add" size={32} variant="filled" color={theme.brandText} accessibilityLabel={`Add to ${meal.label}`} onPress={onAdd} />
       </View>
       {items.map(item => (
-        <Animated.View key={item.id} entering={FadeInDown.duration(260)} exiting={FadeOut.duration(160)} layout={LinearTransition.duration(220)}>
-          <ReanimatedSwipeable
-            friction={2}
-            rightThreshold={40}
-            overshootRight={false}
-            renderRightActions={() => (
-              <Pressable
-                onPress={() => remove(item)}
-                style={[styles.deleteAction, { backgroundColor: theme.danger }]}
-                accessibilityLabel={`Delete ${item.name}`}
-              >
-                <Ionicons name="trash" size={20} color="#FFFFFF" />
-                <AppText variant="caption" weight="700" color="#FFFFFF">Delete</AppText>
-              </Pressable>
-            )}
-          >
-            <Pressable
-              onPress={() => onSelect(item)}
-              style={({ pressed }) => [styles.itemRow, { backgroundColor: pressed ? theme.fill : theme.surface }]}
-              accessibilityRole="button"
-              accessibilityHint="Shows details. Swipe left to delete."
-            >
-              <View style={styles.flex}>
-                <AppText variant="callout" weight="500" numberOfLines={1}>{item.name}</AppText>
-                <AppText variant="footnote" tone="tertiary" numberOfLines={1}>
-                  {[timeLabel(item.timestamp), sourceLabel(item.restaurant), item.details].filter(Boolean).join(' · ')}
-                </AppText>
-              </View>
-              <AppText variant="subhead" weight="600" numeric tone={item.nutrition_status === 'none' ? 'tertiary' : 'primary'}>
-                {formatTrackedCalories(item)}
-              </AppText>
-            </Pressable>
-          </ReanimatedSwipeable>
-        </Animated.View>
+        <LoggedFoodRow key={item.id} item={item} onSelect={onSelect} onRemove={remove} />
       ))}
     </Animated.View>
   );
@@ -468,6 +491,16 @@ const styles = StyleSheet.create({
     paddingLeft: space.lg,
     paddingRight: space.md,
     paddingVertical: space.md,
+  },
+  swipeClip: {
+    overflow: 'hidden',
+    zIndex: 0,
+  },
+  swipeContainer: {
+    overflow: 'hidden',
+  },
+  swipeChild: {
+    zIndex: 1,
   },
   itemRow: {
     flexDirection: 'row',

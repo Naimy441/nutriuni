@@ -113,6 +113,7 @@ export function useSuggestions(date: string, target: MealTarget | undefined, lim
   const revision = useMenuRevision();
   const { all } = useFastAccess();
   const { food, schedule } = usePreferences();
+  const { profile } = useGoals();
   const minute = date === today ? nowMinutes(now) : null;
   // Re-plan each quarter hour, not every minute.
   const bucket = minute === null ? null : Math.floor(minute / 15) * 15;
@@ -134,10 +135,11 @@ export function useSuggestions(date: string, target: MealTarget | undefined, lim
       familiar: familiarityMap(all),
       limit,
       prefs: food,
+      classYear: profile?.classYear,
     });
     return pickUpEarly ? results.map(result => ({ ...result, tags: [...result.tags, 'pick-up-early' as const] })) : results;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, target?.meal, target?.state, target?.calories, target?.protein, target?.window.start, target?.window.end, bucket, revision, savedSignature, limit, food, schedule.kind]);
+  }, [date, target?.meal, target?.state, target?.calories, target?.protein, target?.window.start, target?.window.end, bucket, revision, savedSignature, limit, food, schedule.kind, profile?.classYear]);
 }
 
 function entryFor(part: FoodOption, saved: FastAccessItem[]): NewTrackedItem | null {

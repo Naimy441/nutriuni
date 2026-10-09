@@ -11,7 +11,7 @@ import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 're
 import Animated, { FadeIn, FadeInDown, FadeInLeft, FadeInRight, FadeOut } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  ActivityPicker, BodyFields, DraftErrors, GoalPicker, profileFromDraft, ProfileDraft, SexPicker, validateDraft,
+  ActivityPicker, BodyFields, ClassYearPicker, DraftErrors, GoalPicker, profileFromDraft, ProfileDraft, SexPicker, validateDraft,
 } from './ProfileFields';
 import { AllergyFields, DietaryDisclaimer, DietFields, ScheduleFields } from './PreferenceFields';
 import { AnimatedNumber } from './ui/AnimatedNumber';
@@ -36,7 +36,7 @@ const STEP_TEXT: Partial<Record<Step, { title: string; subtitle: string }>> = {
 const STEP_FIELDS: Partial<Record<Step, (keyof DraftErrors)[]>> = {
   goal: ['goal'],
   sex: ['gender'],
-  body: ['age', 'height', 'weight'],
+  body: ['age', 'height', 'weight', 'classYear'],
   activity: ['activityLevel'],
 };
 
@@ -104,8 +104,13 @@ export function OnboardingScreen() {
     return (
       <View style={[styles.container, { backgroundColor: theme.background, paddingTop: insets.top + space.xxl, paddingBottom: insets.bottom + space.lg }]}>
         <ScrollView contentContainerStyle={styles.welcome} showsVerticalScrollIndicator={false}>
-          <Animated.View entering={FadeIn.duration(500)} style={[styles.logoTile, shadow(theme, 2)]}>
-            <Image source={require('@/assets/images/nutriuni.png')} style={styles.logo} contentFit="contain" accessibilityLabel="nutriuni" />
+          <Animated.View entering={FadeIn.duration(500)} style={[styles.logoTile, shadow(theme, 2), { backgroundColor: theme.scheme === 'dark' ? theme.surface : '#FFFFFF' }]}>
+            <Image
+              source={theme.scheme === 'dark' ? require('@/assets/images/nutriuni-dark.png') : require('@/assets/images/nutriuni.png')}
+              style={styles.logo}
+              contentFit="contain"
+              accessibilityLabel="nutriuni"
+            />
           </Animated.View>
           <Animated.View entering={FadeInDown.delay(120).duration(450)} style={styles.welcomeText}>
             <AppText variant="largeTitle" align="center">Eat well at Duke</AppText>
@@ -163,7 +168,19 @@ export function OnboardingScreen() {
           )}
           {step === 'goal' && <GoalPicker value={draft.goal} onChange={goal => choose({ goal })} />}
           {step === 'sex' && <SexPicker value={draft.gender} onChange={gender => choose({ gender })} />}
-          {step === 'body' && <BodyFields draft={draft} onChange={update} errors={shownErrors} />}
+          {step === 'body' && (
+            <View style={styles.dietStep}>
+              <BodyFields draft={draft} onChange={update} errors={shownErrors} />
+              <View style={styles.allergies}>
+                <AppText variant="headline">Class year</AppText>
+                <AppText variant="footnote" tone="secondary">
+                  Marketplace and Trinity are first-year dining. Your meal plan includes them only if you are a first-year.
+                </AppText>
+                <ClassYearPicker value={draft.classYear} onChange={classYear => update({ classYear })} />
+                {shownErrors.classYear ? <AppText variant="footnote" tone="danger">{shownErrors.classYear}</AppText> : null}
+              </View>
+            </View>
+          )}
           {step === 'activity' && <ActivityPicker value={draft.activityLevel} onChange={activityLevel => choose({ activityLevel })} />}
           {step === 'schedule' && (
             <ScheduleFields value={prefs.schedule} onChange={patch => preferencesStore.update({ schedule: patch })} />
