@@ -12,6 +12,7 @@ import { fastingTimes } from '../services/fastingTimes';
 import {
   buildMenuPool, buildSavedPool, categorize, dayOf, familiarityMap, learnMealShares, LoggedDay, mealWindow,
   openDuring, planMeals, planWeek, recommend, SavedFood, weekMessage, DEFAULT_SHARES,
+  visibleInMealPlan, type FoodOption,
 } from '../services/planner';
 import { DEFAULT_SCHEDULE, EatingSchedule, mealAt, mealSlots } from '../services/schedule';
 
@@ -384,6 +385,44 @@ check('late: only places still open', lateTonight.every(r => r.parts.every(p => 
   // Suhoor picked up the evening before: places open 7 pm - midnight the day before.
   const suhoor = recommend({ pool: allFoods, meal: 'breakfast', calories: 600, protein: 30, date: '2026-02-17', window: { from: 19 * 60, to: 24 * 60 }, familiar, limit: 4 });
   check('suhoor: something to pick up the night before', suhoor.length >= 2, String(suhoor.length));
+}
+
+// Marketplace and Trinity are first-year dining. They stay out of the meal
+// plan unless the profile says freshman.
+{
+  const plate = (id: string, name: string): FoodOption => ({
+    key: `${id}/test`,
+    name,
+    source: 'menu',
+    restaurantId: id,
+    restaurantName: name,
+    section: 'Grill',
+    category: 'main',
+    calories: 700,
+    protein: 40,
+    approx: false,
+    weekday: null,
+    hoursKnown: false,
+  });
+  const pool = [plate('marketplace', 'Marketplace'), plate('trinity', 'Trinity Cafe'), plate('gothic-grill', 'Gothic Grill')];
+  const base = {
+    pool, meal: 'lunch' as const, calories: 700, protein: 40, date: '2026-10-07',
+    window: mealWindow(slotWindow('lunch'), null), familiar: new Map<string, number>(), limit: 8,
+  };
+  const places = (classYear?: 'freshman' | 'other') =>
+    new Set(recommend({ ...base, classYear }).flatMap(s => s.parts.map(p => p.restaurantId)));
+  const other = places('other');
+  const unset = places(undefined);
+  const freshman = places('freshman');
+  check('non-freshman meal plan hides Marketplace', !other.has('marketplace'), [...other].join(','));
+  check('non-freshman meal plan hides Trinity', !other.has('trinity'), [...other].join(','));
+  check('missing class year hides Marketplace and Trinity', !unset.has('marketplace') && !unset.has('trinity'), [...unset].join(','));
+  check('freshman meal plan includes Marketplace', freshman.has('marketplace'), [...freshman].join(','));
+  check('freshman meal plan includes Trinity', freshman.has('trinity'), [...freshman].join(','));
+  check('Gothic Grill stays in every meal plan', other.has('gothic-grill') && freshman.has('gothic-grill'));
+  check('visibleInMealPlan: Trinity without a class year', visibleInMealPlan('trinity') === false);
+  check('visibleInMealPlan: Trinity for a freshman', visibleInMealPlan('trinity', 'freshman') === true);
+  check('visibleInMealPlan: Gothic Grill for everyone else', visibleInMealPlan('gothic-grill', 'other') === true);
 }
 
 console.log(`\n${passes} checks passed, ${failures.length} failed.`);

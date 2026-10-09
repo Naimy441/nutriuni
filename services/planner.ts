@@ -430,6 +430,15 @@ const SIDE = /side|fries|small bites|appetizer|starter|snack|fruit|chips|soup/i;
 // Not on the main campus; only suggested to people who've eaten there.
 const REMOTE_RESTAURANTS = new Set(['duke-marine-lab']);
 
+// Marketplace (the West Campus dining hall) and Trinity Cafe are first-year
+// dining. They stay out of the meal plan unless the user is a first-year.
+export const FRESHMAN_DINING_IDS = new Set(['marketplace', 'trinity']);
+
+export function visibleInMealPlan(restaurantId: string | null, classYear?: 'freshman' | 'other'): boolean {
+  if (!restaurantId || !FRESHMAN_DINING_IDS.has(restaurantId)) return true;
+  return classYear === 'freshman';
+}
+
 export function categorize(section: string, name: string): FoodCategory | 'component' {
   if (COMPONENT.test(section)) return 'component';
   if (SMOOTHIE_SECTION.test(section) || SMOOTHIE_NAME.test(name)) return 'smoothie';
@@ -601,6 +610,7 @@ export function recommend(input: {
   familiar: Map<string, number>; // familiarKey → times logged
   limit?: number;
   prefs?: FoodPreferences; // only dishes marked as fitting them
+  classYear?: 'freshman' | 'other';
 }): Suggestion[] {
   const { pool, meal, calories: C, protein: P, date, window, familiar } = input;
   const limit = input.limit ?? 4;
@@ -617,6 +627,7 @@ export function recommend(input: {
       if (!ownMeal && !(option.dietary && checkPreferences(option.dietary, input.prefs!).fits)) return false;
     }
     if (option.weekday !== null && option.weekday !== weekday) return false;
+    if (!visibleInMealPlan(option.restaurantId, input.classYear)) return false;
     if (option.restaurantId && REMOTE_RESTAURANTS.has(option.restaurantId)
       && !familiar.has(familiarKey(option.restaurantName, option.name))) return false;
     if (option.source === 'saved' && !option.restaurantId) return true;

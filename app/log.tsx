@@ -1,5 +1,6 @@
 // The Log sheet (centre "+" and each meal's "+"): search every dining menu,
 // re-log recent foods and saved meals, browse a restaurant, or add calories.
+import { CATEGORY_ALL, CategoryBrowser, CategoryStep } from '@/components/CategoryBrowser';
 import { DishRow, RestaurantRow, StatusLine } from '@/components/DiningRows';
 import { MealPicker } from '@/components/MealPicker';
 import { MenuItemSheet } from '@/components/MenuItemSheet';
@@ -30,7 +31,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, TextInput, View,
+  Alert, Platform, Pressable, ScrollView, StyleSheet, Switch, TextInput, View,
 } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -113,7 +114,7 @@ function LogContent() {
 
   const isIOS = Platform.OS === 'ios';
   return (
-    <KeyboardAvoidingView style={[styles.container, { backgroundColor: theme.background }]} behavior={isIOS ? 'padding' : undefined}>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={[styles.header, { paddingTop: isIOS ? space.lg : insets.top + space.md }]}>
         <View style={styles.titleRow}>
           <View style={styles.flex}>
@@ -135,6 +136,7 @@ function LogContent() {
         contentContainerStyle={[styles.body, { paddingBottom: FOOTER_HEIGHT + insets.bottom + space.xxl }]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
+        automaticallyAdjustKeyboardInsets
         showsVerticalScrollIndicator={false}
       >
         {searching ? (
@@ -189,6 +191,7 @@ function LogContent() {
           browsing ? (
             <RestaurantMenuList
               id={browsing}
+              scrollRef={scrollRef}
               onBack={() => setBrowsing(null)}
               onOpenDish={openSheet}
               onQuickAdd={quickAdd}
@@ -202,7 +205,7 @@ function LogContent() {
         )}
       </ScrollView>
 
-      <MealFooter date={date} meal={meal} onDone={close} />
+      {tab !== 'quick' && <MealFooter date={date} meal={meal} onDone={close} />}
 
       <MenuItemSheet
         menu={sheet?.menu ?? null}
@@ -211,7 +214,7 @@ function LogContent() {
         date={date}
         meal={meal}
       />
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -432,8 +435,9 @@ function RestaurantList({ onOpen }: { onOpen: (id: string) => void }) {
   );
 }
 
-function RestaurantMenuList({ id, onBack, onOpenDish, onQuickAdd, addingId }: {
+function RestaurantMenuList({ id, scrollRef, onBack, onOpenDish, onQuickAdd, addingId }: {
   id: string;
+  scrollRef: React.RefObject<ScrollView | null>;
   onBack: () => void;
   onOpenDish: (menu: RestaurantMenu, item: MenuItem) => void;
   onQuickAdd: (menu: RestaurantMenu, item: MenuItem) => void;
@@ -442,8 +446,16 @@ function RestaurantMenuList({ id, onBack, onOpenDish, onQuickAdd, addingId }: {
   const theme = useTheme();
   const now = useClock();
   const revision = useMenuRevision();
+  const [category, setCategory] = useState(CATEGORY_ALL);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const menu = useMemo(() => menuDatabase.loadRestaurant(id), [id, revision]);
+  const sectionNames = menu?.sections.map(section => section.name) ?? [];
+  useEffect(() => {
+    setCategory(CATEGORY_ALL);
+  }, [id]);
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [category, scrollRef]);
   const previews = useMemo(() => {
     const map = new Map<MenuItem, ReturnType<typeof describePreview>>();
     menu?.sections.forEach(section => section.items.forEach(item => map.set(item, describePreview(menu, item))));
@@ -462,7 +474,10 @@ function RestaurantMenuList({ id, onBack, onOpenDish, onQuickAdd, addingId }: {
         <AppText variant="title2">{menu.name}</AppText>
         <StatusLine status={menu.hours ? openStatus(menu.hours, now) : null} fallback={hoursTextLabel(menu.hours_text)} />
       </View>
-      {menu.sections.map(section => (
+      {sectionNames.length > 1 && (
+        <CategoryBrowser names={sectionNames} value={category} onChange={setCategory} />
+      )}
+      {menu.sections.filter(section => category === CATEGORY_ALL || section.name === category).map(section => (
         <View key={section.name} style={styles.smallGap}>
           <AppText variant="footnote" tone="secondary" weight="600" style={styles.label}>{section.name.toUpperCase()}</AppText>
           <View style={[styles.group, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
@@ -481,6 +496,9 @@ function RestaurantMenuList({ id, onBack, onOpenDish, onQuickAdd, addingId }: {
           </View>
         </View>
       ))}
+      {sectionNames.length > 1 && (
+        <CategoryStep names={sectionNames} value={category} onChange={setCategory} />
+      )}
     </Animated.View>
   );
 }

@@ -5,6 +5,7 @@ import { useEffect, useSyncExternalStore } from 'react';
 
 export type Sex = 'male' | 'female';
 export type WeightGoal = 'lose' | 'maintain' | 'gain';
+export type ClassYear = 'freshman' | 'other';
 
 export interface UserProfile {
   age: number;
@@ -14,6 +15,9 @@ export interface UserProfile {
   gender: Sex;
   activityLevel: number; // 1.2 - 1.9
   goal: WeightGoal;
+  // First-years eat at Marketplace and Trinity. Missing means not a first-year,
+  // so those halls stay out of the meal plan until the user says otherwise.
+  classYear?: ClassYear;
 }
 
 export interface NutritionGoals {
@@ -92,6 +96,12 @@ export interface PlannerSettings {
 
 const DEFAULT_PLANNER: PlannerSettings = { balanceWeek: true };
 
+function normalizeProfile(raw: UserProfile | null): UserProfile | null {
+  if (!raw || typeof raw.age !== 'number') return null;
+  const classYear = raw.classYear === 'freshman' || raw.classYear === 'other' ? raw.classYear : undefined;
+  return { ...raw, classYear };
+}
+
 interface GoalsState {
   loaded: boolean;
   onboarded: boolean;
@@ -124,7 +134,7 @@ class GoalsStore {
       this.loading = AsyncStorage.multiGet(['nutrition_goals', 'user_profile', ONBOARDING_KEY, PLANNER_KEY])
         .then(([[, goalsText], [, profileText], [, onboardedText], [, plannerText]]) => {
           const goals = goalsText ? { ...DEFAULT_GOALS, ...JSON.parse(goalsText) } : DEFAULT_GOALS;
-          const profile = profileText ? (JSON.parse(profileText) as UserProfile) : null;
+          const profile = profileText ? normalizeProfile(JSON.parse(profileText)) : null;
           const planner = plannerText ? { ...DEFAULT_PLANNER, ...JSON.parse(plannerText) } : DEFAULT_PLANNER;
           this.set({ loaded: true, onboarded: onboardedText === 'true', goals, profile, planner });
         })

@@ -7,10 +7,10 @@ import { MealType } from '@/services/meals';
 import { currentMeal, useMealLabel, usePreferences } from '@/services/preferences';
 import { ManualNutrition, trackedEntryFromOrder } from '@/services/menuLogging';
 import {
-  computeNutrition, defaultSelection, groupMax, hasNutritionSource, isSingleChoice,
+  computeNutrition, defaultSelection, groupMax, hasNutritionSource, implicitAddFood, isSingleChoice,
   Selection, selectedCount, setValueQuantity, toggleValue, unmetChoices,
 } from '@/services/menuNutrition';
-import type { FoodLabel, MenuItem, OptionGroup, OptionValue, RestaurantMenu } from '@/services/menuTypes';
+import type { MenuItem, OptionGroup, OptionValue, RestaurantMenu } from '@/services/menuTypes';
 import { nutritionTracker, TrackedItem, useToday } from '@/services/NutritionTracker';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -65,12 +65,14 @@ function groupHint(group: OptionGroup): string {
   return Number.isFinite(max) && max < group.values.length ? `Optional · up to ${max}` : 'Optional';
 }
 
-function valueEffect(value: OptionValue, foods: Record<string, FoodLabel>, quantity: number): string {
-  const label = value.food ? foods[value.food] : undefined;
-  if (!label) return '';
-  const calories = Math.round(label.calories * (value.quantity ?? 1) * Math.max(quantity, 1));
-  if (value.kind === 'add') return `+${calories} cal`;
-  if (value.kind === 'remove') return `−${calories} cal`;
+function valueEffect(value: OptionValue, menu: RestaurantMenu, quantity: number): string {
+  const linked = value.food ? menu.foods[value.food] : undefined;
+  const resolved = linked ? { label: linked, estimated: false } : implicitAddFood(menu, value);
+  if (!resolved) return '';
+  const calories = Math.round(resolved.label.calories * (value.quantity ?? 1) * Math.max(quantity, 1));
+  const approx = resolved.estimated ? '~' : '';
+  if (value.kind === 'add') return `${approx}+${calories} cal`;
+  if (value.kind === 'remove') return `${approx}−${calories} cal`;
   return '';
 }
 
@@ -285,7 +287,7 @@ export function MenuItemSheet({ menu, item, onClose, onLogged, date, meal: initi
                 <AppText variant="subhead" tone="secondary" style={styles.flex}>
                   {key === 'protein' ? 'Protein' : key === 'carbs' ? 'Carbs' : 'Fat'}
                 </AppText>
-                <AppText variant="subhead" weight="700" numeric>{totals[key]} g</AppText>
+                <AppText variant="subhead" weight="700" numeric>{result.unknown.includes(key) ? '—' : `${totals[key]} g`}</AppText>
               </View>
             ))}
           </View>
@@ -297,6 +299,11 @@ export function MenuItemSheet({ menu, item, onClose, onLogged, date, meal: initi
         {result.estimated && (
           <Note icon="calculator-outline" color={theme.brandText}>
             Estimated by adding up each part of your order
+          </Note>
+        )}
+        {result.withheld.length > 0 && (
+          <Note icon="alert-circle-outline" color={theme.warning}>
+            Some numbers on Duke&apos;s label can&apos;t fit this serving, so they aren&apos;t shown.
           </Note>
         )}
         {stale && lastSeen && (
@@ -353,7 +360,7 @@ export function MenuItemSheet({ menu, item, onClose, onLogged, date, meal: initi
     const selected = quantity > 0;
     const single = isSingleChoice(group);
     const showStepper = selected && group.allow_quantity && groupMax(group) > 1;
-    const effect = valueEffect(value, foods, quantity);
+    const effect = menu ? valueEffect(value, menu, quantity) : '';
     const halal = value.food ? foods[value.food]?.halal : false;
     const valueConflicts = (value.kind === 'add' && value.food ? foods[value.food]?.contains ?? [] : [])
       .filter(code => food.avoid.includes(code as Allergen));
@@ -424,6 +431,8 @@ export function MenuItemSheet({ menu, item, onClose, onLogged, date, meal: initi
       handleComponent={FadingHandle}
       onDismiss={onClose}
       enableDynamicSizing={false}
+      keyboardBehavior="extend"
+      enablePanDownToClose={!manualMode}
       footerComponent={renderFooter}
     >
       {item && menu ? (

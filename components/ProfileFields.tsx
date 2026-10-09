@@ -1,6 +1,6 @@
 // Inputs for the user's details, shared by onboarding and "Your details".
 import { radius, space, useTheme } from '@/constants/theme';
-import { ACTIVITY_LEVELS, Sex, UserProfile, WEIGHT_GOALS, WeightGoal } from '@/services/goals';
+import { ACTIVITY_LEVELS, ClassYear, Sex, UserProfile, WEIGHT_GOALS, WeightGoal } from '@/services/goals';
 import { Ionicons } from '@expo/vector-icons';
 import React, { forwardRef } from 'react';
 import { StyleSheet, TextInput, TextInputProps, View } from 'react-native';
@@ -15,6 +15,7 @@ export interface ProfileDraft {
   heightFeet: string;
   heightInches: string;
   activityLevel?: number;
+  classYear?: ClassYear;
 }
 
 export function draftFromProfile(profile: UserProfile | null): ProfileDraft {
@@ -27,10 +28,11 @@ export function draftFromProfile(profile: UserProfile | null): ProfileDraft {
     heightFeet: String(profile.heightFeet),
     heightInches: String(profile.heightInches),
     activityLevel: profile.activityLevel,
+    classYear: profile.classYear === 'freshman' ? 'freshman' : 'other',
   };
 }
 
-export type DraftErrors = Partial<Record<'goal' | 'gender' | 'age' | 'weight' | 'height' | 'activityLevel', string>>;
+export type DraftErrors = Partial<Record<'goal' | 'gender' | 'age' | 'weight' | 'height' | 'activityLevel' | 'classYear', string>>;
 
 export function validateDraft(draft: ProfileDraft): DraftErrors {
   const errors: DraftErrors = {};
@@ -46,6 +48,7 @@ export function validateDraft(draft: ProfileDraft): DraftErrors {
     errors.height = 'Enter a height from 3′0″ to 8′11″';
   }
   if (!draft.activityLevel) errors.activityLevel = 'Choose an activity level';
+  if (!draft.classYear) errors.classYear = 'Choose your class year';
   return errors;
 }
 
@@ -59,6 +62,7 @@ export function profileFromDraft(draft: ProfileDraft): UserProfile | null {
     heightFeet: Number(draft.heightFeet),
     heightInches: draft.heightInches === '' ? 0 : Number(draft.heightInches),
     activityLevel: draft.activityLevel!,
+    classYear: draft.classYear!,
   };
 }
 
@@ -117,6 +121,27 @@ export function ActivityPicker({ value, onChange }: { value?: number; onChange: 
       {ACTIVITY_LEVELS.map(level => (
         <OptionCard key={level.value} icon={level.icon} label={level.label} detail={level.detail} selected={value === level.value} onPress={() => onChange(level.value)} />
       ))}
+    </View>
+  );
+}
+
+export function ClassYearPicker({ value, onChange }: { value?: ClassYear; onChange: (year: ClassYear) => void }) {
+  return (
+    <View style={styles.options} accessibilityRole="radiogroup">
+      <OptionCard
+        icon="school-outline"
+        label="First-year"
+        detail="Marketplace and Trinity stay in your meal plan"
+        selected={value === 'freshman'}
+        onPress={() => onChange('freshman')}
+      />
+      <OptionCard
+        icon="people-outline"
+        label="Sophomore or above"
+        detail="Marketplace and Trinity stay off your meal plan"
+        selected={value === 'other'}
+        onPress={() => onChange('other')}
+      />
     </View>
   );
 }

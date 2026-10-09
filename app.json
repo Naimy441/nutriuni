@@ -17,6 +17,10 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.nutriuni.app",
       "buildNumber": "8",
+      "icon": {
+        "light": "./assets/images/nutriuni.png",
+        "dark": "./assets/images/nutriuni-dark.png"
+      },
       "infoPlist": {
         "CFBundleDisplayName": "nutriuni",
         "NSCameraUsageDescription": "This app does not use the camera.",
@@ -29,7 +33,7 @@
       "versionCode": 8,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/nutriuni.png",
-        "backgroundColor": "#006838"
+        "backgroundColor": "#FFFFFF"
       },
       "edgeToEdgeEnabled": true,
       "permissions": []
@@ -47,7 +51,11 @@
           "image": "./assets/images/nutriuni.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#006838"
+          "backgroundColor": "#FFFFFF",
+          "dark": {
+            "image": "./assets/images/nutriuni-dark.png",
+            "backgroundColor": "#0A0E0C"
+          }
         }
       ],
       [

@@ -7,7 +7,7 @@ import { MealType } from '@/services/meals';
 import { currentMealLabel } from '@/services/preferences';
 import { formatTrackedCalories, mealOf, nutritionTracker, TrackedItem } from '@/services/NutritionTracker';
 import { Ionicons } from '@expo/vector-icons';
-import { BottomSheetView } from '@gorhom/bottom-sheet';
+import { BottomSheetScrollView, BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -37,10 +37,15 @@ export function TrackedItemSheet({ selection, onDismiss }: { selection: TrackedS
   const ref = useRef<SheetRef>(null);
   // Keep showing the item while the sheet animates away after a delete.
   const [shown, setShown] = useState<TrackedSelection | null>(selection);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [editError, setEditError] = useState<string | null>(null);
 
   useEffect(() => {
     if (selection) {
       setShown(selection);
+      setEditing(false);
+      setEditError(null);
       ref.current?.present();
     } else {
       ref.current?.dismiss();
@@ -56,6 +61,54 @@ export function TrackedItemSheet({ selection, onDismiss }: { selection: TrackedS
     if (!item || !date || next === meal) return;
     await nutritionTracker.updateItem(item.id, date, { meal: next });
     setShown({ item: { ...item, meal: next }, date });
+  };
+
+  const startEdit = () => {
+    if (!item) return;
+    setDraft({
+      name: item.name,
+      serving_size: item.serving_size,
+      calories: String(Math.round(item.calories)),
+      protein: String(item.protein),
+      carbs: String(item.carbs),
+      fat: String(item.fat),
+      fiber: String(item.fiber ?? 0),
+      sugar: String(item.sugar ?? 0),
+      sodium: String(item.sodium ?? 0),
+    });
+    setEditError(null);
+    setEditing(true);
+  };
+
+  const saveEdit = async () => {
+    if (!item || !date) return;
+    const calories = Number(draft.calories);
+    if (!draft.name.trim()) {
+      setEditError('Name this food');
+      return;
+    }
+    if (!Number.isFinite(calories) || calories < 0 || calories > 10000) {
+      setEditError('Enter calories from 0 to 10,000');
+      return;
+    }
+    const read = (key: string) => Math.max(0, Math.round((parseFloat(draft[key]) || 0) * 10) / 10);
+    const patch: Partial<TrackedItem> = {
+      name: draft.name.trim(),
+      serving_size: draft.serving_size.trim() || '1 serving',
+      calories: Math.round(calories),
+      protein: read('protein'),
+      carbs: read('carbs'),
+      fat: read('fat'),
+      fiber: read('fiber'),
+      sugar: read('sugar'),
+      sodium: Math.round(read('sodium')),
+      nutrition_status: calories === 0 && read('protein') === 0 && read('carbs') === 0 && read('fat') === 0 ? 'none' : 'manual',
+    };
+    await nutritionTracker.updateItem(item.id, date, patch);
+    const next = { ...item, ...patch };
+    setShown({ item: next, date });
+    setEditing(false);
+    toast.show({ message: `Updated ${next.name}` });
   };
 
   const logAgain = async () => {
@@ -84,8 +137,8 @@ export function TrackedItemSheet({ selection, onDismiss }: { selection: TrackedS
   const hasNutrition = item?.nutrition_status !== 'none';
 
   return (
-    <Sheet ref={ref} onDismiss={onDismiss} enableDynamicSizing>
-      <BottomSheetView style={[styles.content, { paddingBottom: insets.bottom + space.lg }]}>
+    <Sheet ref={ref} onDismiss={onDismiss} enableDynamicSizing keyboardBehavior="extend" enablePanDownToClose={!editing}>
+      <BottomSheetScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + space.lg }]} keyboardShouldPersistTaps="handled">
         {item && date ? (
           <>
             <View style={styles.header}>
@@ -101,56 +154,113 @@ export function TrackedItemSheet({ selection, onDismiss }: { selection: TrackedS
               <IconButton icon="close" accessibilityLabel="Close" onPress={() => ref.current?.dismiss()} />
             </View>
 
-            {item.details ? (
-              <View style={[styles.details, { backgroundColor: theme.fill }]}>
-                <Ionicons name="list-outline" size={16} color={theme.textSecondary} />
-                <AppText variant="footnote" tone="secondary" style={styles.flex}>{item.details}</AppText>
-              </View>
-            ) : null}
-
-            <View style={[styles.nutrition, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
-              <View style={styles.caloriesRow}>
-                <AppText variant="largeTitle" numeric color={theme.calories}>
-                  {hasNutrition ? formatTrackedCalories(item).replace(' cal', '') : '—'}
-                </AppText>
-                <AppText variant="subhead" tone="secondary">calories</AppText>
-              </View>
-              {hasNutrition && (
-                <View style={styles.grid}>
+            {editing ? (
+              <View style={styles.editForm}>
+                <EditField label="Name" value={draft.name} onChange={text => setDraft(prev => ({ ...prev, name: text }))} />
+                <EditField label="Serving" value={draft.serving_size} onChange={text => setDraft(prev => ({ ...prev, serving_size: text }))} />
+                <EditField label="Calories" value={draft.calories} onChange={text => setDraft(prev => ({ ...prev, calories: text.replace(/[^0-9.]/g, '') }))} numeric unit="cal" />
+                <View style={styles.editGrid}>
                   {(['protein', 'carbs', 'fat', 'fiber', 'sugar', 'sodium'] as const).map(key => (
-                    <View key={key} style={styles.gridCell}>
-                      <View style={styles.gridLabel}>
-                        <View style={[styles.dot, { backgroundColor: theme[key] }]} />
-                        <AppText variant="caption" tone="secondary">{NUTRIENTS[key].label}</AppText>
-                      </View>
-                      <AppText variant="headline" numeric>{formatAmount(item[key], NUTRIENTS[key].unit)}</AppText>
+                    <View key={key} style={styles.editCell}>
+                      <EditField
+                        label={NUTRIENTS[key].label}
+                        value={draft[key]}
+                        onChange={text => setDraft(prev => ({ ...prev, [key]: text.replace(/[^0-9.]/g, '') }))}
+                        numeric
+                        unit={NUTRIENTS[key].unit}
+                      />
                     </View>
                   ))}
                 </View>
-              )}
-              {note && (
-                <View style={styles.note}>
-                  <Ionicons name={note.icon} size={15} color={theme.textSecondary} />
-                  <AppText variant="footnote" tone="secondary" style={styles.flex}>{note.text}</AppText>
+                {editError ? <AppText variant="footnote" tone="danger">{editError}</AppText> : null}
+                <View style={styles.actions}>
+                  <Button title="Cancel" variant="secondary" onPress={() => setEditing(false)} style={styles.flex} />
+                  <Button title="Save" icon="checkmark" onPress={saveEdit} style={styles.flex} haptic="medium" />
                 </View>
-              )}
-            </View>
-
-            {mealOptions.length > 1 && (
-              <View style={styles.mealGroup}>
-                <AppText variant="footnote" tone="secondary" weight="600" style={styles.sectionLabel}>MEAL</AppText>
-                <MealPicker value={meal} onChange={moveTo} date={date} />
               </View>
-            )}
+            ) : (
+              <>
+                {item.details ? (
+                  <View style={[styles.details, { backgroundColor: theme.fill }]}>
+                    <Ionicons name="list-outline" size={16} color={theme.textSecondary} />
+                    <AppText variant="footnote" tone="secondary" style={styles.flex}>{item.details}</AppText>
+                  </View>
+                ) : null}
 
-            <View style={styles.actions}>
-              <Button title="Log again" icon="repeat" variant="tinted" onPress={logAgain} style={styles.flex} accessibilityLabel={`Log ${item.name} again to ${currentMealLabel(meal, date)}`} />
-              <Button title="Delete" icon="trash-outline" variant="danger" onPress={remove} style={styles.flex} haptic="medium" />
-            </View>
+                <View style={[styles.nutrition, { backgroundColor: theme.surface, borderColor: theme.separator }]}>
+                  <View style={styles.caloriesRow}>
+                    <AppText variant="largeTitle" numeric color={theme.calories}>
+                      {hasNutrition ? formatTrackedCalories(item).replace(' cal', '') : '—'}
+                    </AppText>
+                    <AppText variant="subhead" tone="secondary">calories</AppText>
+                  </View>
+                  {hasNutrition && (
+                    <View style={styles.grid}>
+                      {(['protein', 'carbs', 'fat', 'fiber', 'sugar', 'sodium'] as const).map(key => (
+                        <View key={key} style={styles.gridCell}>
+                          <View style={styles.gridLabel}>
+                            <View style={[styles.dot, { backgroundColor: theme[key] }]} />
+                            <AppText variant="caption" tone="secondary">{NUTRIENTS[key].label}</AppText>
+                          </View>
+                          <AppText variant="headline" numeric>{formatAmount(item[key], NUTRIENTS[key].unit)}</AppText>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                  {note && (
+                    <View style={styles.note}>
+                      <Ionicons name={note.icon} size={15} color={theme.textSecondary} />
+                      <AppText variant="footnote" tone="secondary" style={styles.flex}>{note.text}</AppText>
+                    </View>
+                  )}
+                </View>
+
+                {mealOptions.length > 1 && (
+                  <View style={styles.mealGroup}>
+                    <AppText variant="footnote" tone="secondary" weight="600" style={styles.sectionLabel}>MEAL</AppText>
+                    <MealPicker value={meal} onChange={moveTo} date={date} />
+                  </View>
+                )}
+
+                <View style={styles.actions}>
+                  <Button title="Edit" icon="create-outline" variant="tinted" onPress={startEdit} style={styles.flex} accessibilityLabel={`Edit ${item.name}`} />
+                  <Button title="Log again" icon="repeat" variant="secondary" onPress={logAgain} style={styles.flex} accessibilityLabel={`Log ${item.name} again to ${currentMealLabel(meal, date)}`} />
+                </View>
+                <Button title="Delete" icon="trash-outline" variant="danger" onPress={remove} haptic="medium" />
+              </>
+            )}
           </>
         ) : null}
-      </BottomSheetView>
+      </BottomSheetScrollView>
     </Sheet>
+  );
+}
+
+function EditField({ label, value, onChange, numeric, unit }: {
+  label: string;
+  value: string;
+  onChange: (text: string) => void;
+  numeric?: boolean;
+  unit?: string;
+}) {
+  const theme = useTheme();
+  return (
+    <View style={styles.editField}>
+      <AppText variant="caption" tone="secondary">{label}</AppText>
+      <View style={[styles.editInput, { backgroundColor: theme.fill }]}>
+        <BottomSheetTextInput
+          value={value}
+          onChangeText={onChange}
+          keyboardType={numeric ? 'decimal-pad' : 'default'}
+          placeholder="0"
+          placeholderTextColor={theme.textTertiary}
+          selectionColor={theme.brand}
+          style={[styles.editText, { color: theme.text }]}
+          accessibilityLabel={label}
+        />
+        {unit ? <AppText variant="footnote" tone="tertiary">{unit}</AppText> : null}
+      </View>
+    </View>
   );
 }
 
@@ -222,5 +332,33 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     gap: space.md,
+  },
+  editForm: {
+    gap: space.md,
+  },
+  editGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: space.md,
+  },
+  editCell: {
+    width: '30%',
+    flexGrow: 1,
+  },
+  editField: {
+    gap: 4,
+  },
+  editInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: radius.md,
+    paddingHorizontal: space.md,
+    minHeight: 44,
+  },
+  editText: {
+    flex: 1,
+    fontSize: 17,
+    fontWeight: '600',
+    paddingVertical: space.sm,
   },
 });
