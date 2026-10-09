@@ -7,7 +7,7 @@ import { MealType } from '@/services/meals';
 import { currentMealLabel } from '@/services/preferences';
 import { formatTrackedCalories, mealOf, nutritionTracker, TrackedItem } from '@/services/NutritionTracker';
 import { Ionicons } from '@expo/vector-icons';
-import { BottomSheetScrollView, BottomSheetTextInput } from '@gorhom/bottom-sheet';
+import { BottomSheetFooter, BottomSheetScrollView, BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -135,10 +135,39 @@ export function TrackedItemSheet({ selection, onDismiss }: { selection: TrackedS
 
   const note = item?.nutrition_status ? STATUS_NOTES[item.nutrition_status] : undefined;
   const hasNutrition = item?.nutrition_status !== 'none';
+  const sheetBg = theme.scheme === 'dark' ? theme.surface : theme.background;
+
+  // The edit form is taller than a hugged sheet, which clipped Cancel and Save
+  // on the screen edge. Fill the sheet and pin those buttons above the safe area.
+  useEffect(() => {
+    if (!shown || !editing) return;
+    const frame = requestAnimationFrame(() => ref.current?.snapToIndex(0));
+    return () => cancelAnimationFrame(frame);
+  }, [editing, shown]);
 
   return (
-    <Sheet ref={ref} onDismiss={onDismiss} enableDynamicSizing keyboardBehavior="extend" enablePanDownToClose={!editing}>
-      <BottomSheetScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + space.lg }]} keyboardShouldPersistTaps="handled">
+    <Sheet
+      ref={ref}
+      onDismiss={onDismiss}
+      snapPoints={editing ? ['100%'] : undefined}
+      enableDynamicSizing={!editing}
+      keyboardBehavior="extend"
+      enablePanDownToClose={!editing}
+      footerComponent={editing ? props => (
+        <BottomSheetFooter {...props} bottomInset={insets.bottom} style={{ backgroundColor: sheetBg }}>
+          <View style={[styles.editFooter, { backgroundColor: sheetBg, borderTopColor: theme.separator }]}>
+            <Button title="Cancel" variant="secondary" onPress={() => setEditing(false)} style={styles.flex} />
+            <Button title="Save" icon="checkmark" onPress={saveEdit} style={styles.flex} haptic="medium" />
+          </View>
+        </BottomSheetFooter>
+      ) : undefined}
+    >
+      <BottomSheetScrollView
+        style={[styles.scroll, { backgroundColor: sheetBg }]}
+        contentContainerStyle={[styles.content, { flexGrow: 1, backgroundColor: sheetBg, paddingBottom: insets.bottom + space.xxl }]}
+        enableFooterMarginAdjustment={editing}
+        keyboardShouldPersistTaps="handled"
+      >
         {item && date ? (
           <>
             <View style={styles.header}>
@@ -173,10 +202,6 @@ export function TrackedItemSheet({ selection, onDismiss }: { selection: TrackedS
                   ))}
                 </View>
                 {editError ? <AppText variant="footnote" tone="danger">{editError}</AppText> : null}
-                <View style={styles.actions}>
-                  <Button title="Cancel" variant="secondary" onPress={() => setEditing(false)} style={styles.flex} />
-                  <Button title="Save" icon="checkmark" onPress={saveEdit} style={styles.flex} haptic="medium" />
-                </View>
               </View>
             ) : (
               <>
@@ -269,6 +294,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.xl,
     paddingTop: space.xs,
     gap: space.lg,
+  },
+  scroll: {
+    flex: 1,
+  },
+  editFooter: {
+    flexDirection: 'row',
+    gap: space.md,
+    paddingHorizontal: space.xl,
+    paddingTop: space.md,
+    paddingBottom: space.lg,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   header: {
     flexDirection: 'row',
